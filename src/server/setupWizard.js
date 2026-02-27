@@ -29,6 +29,7 @@ export function evaluateSetupWizard({
   hasAnyGlm5,
   hasConfiguredModel,
   marketIdProvided,
+  tokenIdProvided,
   canFetchMarketDetail,
   canFetchOrderbook,
   details = {}
@@ -109,6 +110,22 @@ export function evaluateSetupWizard({
             : 'Market detail probe failed.'),
         fix: 'Use a valid market id from List Markets and retry.'
       }),
+    );
+  } else {
+    checks.push(
+      makeCheck({
+        id: 'market-probe-detail',
+        title: 'Market Detail Probe',
+        status: 'skip',
+        critical: false,
+        detail: 'Optional: provide a market id to validate market detail command.',
+        fix: 'Enter a market id in the setup wizard and rerun checks.'
+      })
+    );
+  }
+
+  if (tokenIdProvided) {
+    checks.push(
       makeCheck({
         id: 'market-probe-orderbook',
         title: 'Orderbook Probe',
@@ -117,20 +134,20 @@ export function evaluateSetupWizard({
         detail:
           details.orderbook ||
           (canFetchOrderbook
-            ? 'Orderbook command succeeded for probe market.'
+            ? 'Orderbook command succeeded for probe token.'
             : 'Orderbook probe failed.'),
-        fix: 'Use a liquid market id and verify orderbook command syntax.'
+        fix: 'Use a valid token id and verify orderbook command syntax.'
       })
     );
   } else {
     checks.push(
       makeCheck({
-        id: 'market-probe',
-        title: 'Market-Specific Probe',
+        id: 'market-probe-orderbook',
+        title: 'Orderbook Probe',
         status: 'skip',
         critical: false,
-        detail: 'Optional: provide a market id to validate market detail + orderbook.',
-        fix: 'Enter a market id in the setup wizard and rerun checks.'
+        detail: 'Optional: provide a token id to validate live orderbook command.',
+        fix: 'Enter a token id in the setup wizard and rerun checks.'
       })
     );
   }
@@ -153,8 +170,13 @@ export function evaluateSetupWizard({
   const marketProbeChecks = checks.filter((check) =>
     ['market-probe-detail', 'market-probe-orderbook'].includes(check.id)
   );
+  const marketProbeEvaluatedChecks = marketProbeChecks.filter(
+    (check) => check.status !== 'skip'
+  );
   const marketProbeReady =
-    marketProbeChecks.length === 0 ? null : marketProbeChecks.every((check) => isPass(check.status));
+    marketProbeEvaluatedChecks.length === 0
+      ? null
+      : marketProbeEvaluatedChecks.every((check) => isPass(check.status));
 
   const overallReady = marketProbeReady === null ? tradeReady && aiReady : tradeReady && aiReady && marketProbeReady;
   const nextActions = checks
@@ -172,4 +194,3 @@ export function evaluateSetupWizard({
     }
   };
 }
-

@@ -93,6 +93,72 @@ export function createApp() {
     }
   }
 
+  function extractWalletAddress(payload) {
+    if (!payload) {
+      return null;
+    }
+    if (typeof payload === 'string') {
+      try {
+        const parsed = JSON.parse(payload);
+        return parsed?.address || null;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof payload === 'object' && payload.address) {
+      return String(payload.address).trim();
+    }
+    return null;
+  }
+
+  async function runOpenPositionsProbe() {
+    if (!presetMap.has('openPositions')) {
+      return {
+        attempted: false,
+        success: false,
+        error: 'Missing preset "openPositions".'
+      };
+    }
+
+    const openPositionsPreset = presetMap.get('openPositions');
+    const requiresWallet = (openPositionsPreset.requiredParams || []).includes(
+      'walletAddress'
+    );
+
+    if (!requiresWallet) {
+      return safeRunPreset('openPositions');
+    }
+
+    const walletProbe = await safeRunPreset('walletAddress');
+    if (!walletProbe.success) {
+      return {
+        attempted: true,
+        success: false,
+        error: walletProbe.error || 'Wallet address probe failed.',
+        walletProbe
+      };
+    }
+
+    const walletAddress = extractWalletAddress(
+      walletProbe.execution?.parsed ?? walletProbe.execution?.stdout
+    );
+    if (!walletAddress) {
+      return {
+        attempted: true,
+        success: false,
+        error: 'Wallet address not found from walletAddress preset output.',
+        walletProbe
+      };
+    }
+
+    const positionsProbe = await safeRunPreset('openPositions', { walletAddress });
+    return {
+      ...positionsProbe,
+      walletAddress,
+      walletProbe
+    };
+  }
+
   async function getAiStatus(aiConfig) {
     if (aiConfig.provider === 'openai-compatible') {
       const openAiStatus = await probeOpenAiCompatible(aiConfig);
@@ -183,7 +249,9 @@ export function createApp() {
 
   app.post('/api/setup/wizard', async (req, res) => {
     const marketId = String(req.body?.marketId || '').trim();
+    const tokenId = String(req.body?.tokenId || '').trim();
     const marketIdProvided = marketId.length > 0;
+    const tokenIdProvided = tokenId.length > 0;
 
     const [cliStatus, aiStatus] = await Promise.all([
       probeCli(appConfig.cliBinary, appConfig.commandTimeoutMs),
@@ -199,16 +267,16 @@ export function createApp() {
     const [listMarketsProbe, openPositionsProbe, openOrdersProbe, marketDetailProbe, orderbookProbe] =
       await Promise.all([
         safeRunPreset('listMarkets'),
-        safeRunPreset('openPositions'),
+        runOpenPositionsProbe(),
         safeRunPreset('openOrders'),
         marketIdProvided ? safeRunPreset('marketDetail', { marketId }) : Promise.resolve(null),
-        marketIdProvided ? safeRunPreset('orderBook', { marketId }) : Promise.resolve(null)
+        tokenIdProvided ? safeRunPreset('orderBook', { tokenId }) : Promise.resolve(null)
       ]);
 
     const canListMarkets = Boolean(listMarketsProbe?.success);
     const canAccessAccount = Boolean(openPositionsProbe?.success || openOrdersProbe?.success);
     const canFetchMarketDetail = marketIdProvided ? Boolean(marketDetailProbe?.success) : false;
-    const canFetchOrderbook = marketIdProvided ? Boolean(orderbookProbe?.success) : false;
+    const canFetchOrderbook = tokenIdProvided ? Boolean(orderbookProbe?.success) : false;
 
     const wizard = evaluateSetupWizard({
       cliAvailable: cliStatus.available,
@@ -219,6 +287,7 @@ export function createApp() {
       hasAnyGlm5: aiStatus.hasAnyGlm5,
       hasConfiguredModel: aiStatus.hasConfiguredModel,
       marketIdProvided,
+      tokenIdProvided,
       canFetchMarketDetail,
       canFetchOrderbook,
       details: {
@@ -258,6 +327,7 @@ export function createApp() {
     res.json({
       generatedAt: new Date().toISOString(),
       marketId: marketIdProvided ? marketId : null,
+      tokenId: tokenIdProvided ? tokenId : null,
       summary: wizard.summary,
       checks: wizard.checks
     });
@@ -277,18 +347,20 @@ export function createApp() {
 
   app.get('/api/live/overview', async (req, res) => {
     const marketId = String(req.query.marketId || '').trim();
+    const tokenId = String(req.query.tokenId || '').trim();
 
     const [listMarketsProbe, openPositionsProbe, openOrdersProbe, marketDetailProbe, orderbookProbe] =
       await Promise.all([
         safeRunPreset('listMarkets'),
-        safeRunPreset('openPositions'),
+        runOpenPositionsProbe(),
         safeRunPreset('openOrders'),
         marketId ? safeRunPreset('marketDetail', { marketId }) : Promise.resolve(null),
-        marketId ? safeRunPreset('orderBook', { marketId }) : Promise.resolve(null)
+        tokenId ? safeRunPreset('orderBook', { tokenId }) : Promise.resolve(null)
       ]);
 
     const overview = buildLiveOverview({
       marketId,
+      tokenId,
       listMarketsProbe,
       openPositionsProbe,
       openOrdersProbe,
@@ -302,6 +374,7 @@ export function createApp() {
   app.post('/api/research', async (req, res) => {
     const {
       marketId,
+      tokenId,
       question,
       timeHorizon = 'swing',
       riskTolerance = 'moderate'
@@ -321,23 +394,35 @@ export function createApp() {
 
     try {
       const aiConfig = resolveAiConfig(req.body?.aiConfig, defaultAiConfig);
-      const [market, orderbook, positions] = await Promise.all([
+      const [market, orderbook, positionsProbe] = await Promise.all([
         executePresetById('marketDetail', { marketId }),
-        executePresetById('orderBook', { marketId }),
-        executePresetById('openPositions', {})
+        tokenId ? executePresetById('orderBook', { tokenId }) : Promise.resolve(null),
+        runOpenPositionsProbe()
       ]);
 
       assertSuccessfulExecution(market, 'Market detail command');
-      assertSuccessfulExecution(orderbook, 'Order book command');
+      if (tokenId && orderbook) {
+        assertSuccessfulExecution(orderbook, 'Order book command');
+      }
 
       const context = {
         market: market.parsed ?? market.stdout,
-        orderbook: orderbook.parsed ?? orderbook.stdout,
-        positions: positions.success
-          ? positions.parsed ?? positions.stdout
+        orderbook:
+          tokenId && orderbook
+            ? orderbook.parsed ?? orderbook.stdout
+            : {
+                unavailable: true,
+                reason: 'Token ID not provided for orderbook lookup.'
+              },
+        positions: positionsProbe.success
+          ? positionsProbe.execution?.parsed ?? positionsProbe.execution?.stdout
           : {
               unavailable: true,
-              reason: positions.stderr || positions.stdout || 'No details.'
+              reason:
+                positionsProbe.error ||
+                positionsProbe.execution?.stderr ||
+                positionsProbe.execution?.stdout ||
+                'No details.'
             }
       };
 

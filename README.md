@@ -1,6 +1,6 @@
-# Polymarket CLI Dashboard + GLM-5 Research
+# PloyCLIDash
 
-A customer-friendly dashboard that wraps your Polymarket CLI into click-driven workflows and adds a strict `glm-5` research analyst via Ollama.
+A customer-friendly dashboard that wraps your Polymarket CLI into click-driven workflows and adds AI market research.
 
 ## What this app does
 
@@ -11,6 +11,11 @@ A customer-friendly dashboard that wraps your Polymarket CLI into click-driven w
 - Live matrix feed that auto-refreshes real CLI data (markets, positions, orders, orderbook).
 - Structured market research endpoint that combines CLI context with `glm-5`.
 - Optional custom AI provider mode (OpenAI-compatible endpoint + API key + model).
+
+## Community
+
+- Discord: https://discord.gg/RSDX3PbCyD
+- Support/Donate: https://github.com/sponsors/krutftw
 
 ## Quick start
 
@@ -36,6 +41,8 @@ CLI actions are defined in:
 `config/cli-presets.json`
 
 If your Polymarket CLI subcommand names differ, update that file only. The dashboard reads these presets at startup.
+
+Current preset defaults are mapped against `polymarket 0.1.4` command help (`markets get`, `clob orders`, `clob create-order`, `data positions`, etc.).
 
 Each preset supports:
 

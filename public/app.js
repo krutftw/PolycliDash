@@ -5,12 +5,14 @@ const statusAiDetail = document.querySelector('#ai-detail');
 
 const runSetupButton = document.querySelector('#run-setup');
 const setupMarketIdInput = document.querySelector('#setup-market-id');
+const setupTokenIdInput = document.querySelector('#setup-token-id');
 const setupSummary = document.querySelector('#setup-summary');
 const setupChecks = document.querySelector('#setup-checks');
 
 const runLiveButton = document.querySelector('#run-live');
 const liveAutoToggle = document.querySelector('#live-auto');
 const liveMarketIdInput = document.querySelector('#live-market-id');
+const liveTokenIdInput = document.querySelector('#live-token-id');
 const liveHealth = document.querySelector('#live-health');
 const liveMarketCount = document.querySelector('#live-market-count');
 const livePositionCount = document.querySelector('#live-position-count');
@@ -168,7 +170,14 @@ async function runSetupWizard() {
 
   try {
     const marketId = setupMarketIdInput.value.trim();
-    const payload = marketId ? { marketId } : {};
+    const tokenId = setupTokenIdInput.value.trim();
+    const payload = {};
+    if (marketId) {
+      payload.marketId = marketId;
+    }
+    if (tokenId) {
+      payload.tokenId = tokenId;
+    }
     const result = await getJson('/api/setup/wizard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -201,7 +210,15 @@ function renderLiveOverview(data) {
 async function refreshLiveOverview() {
   try {
     const marketId = liveMarketIdInput.value.trim();
-    const query = marketId ? `?marketId=${encodeURIComponent(marketId)}` : '';
+    const tokenId = liveTokenIdInput.value.trim();
+    const parts = [];
+    if (marketId) {
+      parts.push(`marketId=${encodeURIComponent(marketId)}`);
+    }
+    if (tokenId) {
+      parts.push(`tokenId=${encodeURIComponent(tokenId)}`);
+    }
+    const query = parts.length > 0 ? `?${parts.join('&')}` : '';
     const result = await getJson(`/api/live/overview${query}`);
     renderLiveOverview(result);
   } catch (error) {
@@ -349,6 +366,7 @@ researchForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const marketId = document.querySelector('#research-market-id').value.trim();
+  const tokenId = document.querySelector('#research-token-id').value.trim();
   const question = document.querySelector('#research-question').value.trim();
   const timeHorizon = document.querySelector('#research-horizon').value;
   const riskTolerance = document.querySelector('#research-risk').value;
@@ -362,6 +380,7 @@ researchForm.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         marketId,
+        tokenId,
         question,
         timeHorizon,
         riskTolerance,
@@ -402,6 +421,10 @@ liveMarketIdInput.addEventListener('change', () => {
   refreshLiveOverview().catch(() => {});
 });
 
+liveTokenIdInput.addEventListener('change', () => {
+  refreshLiveOverview().catch(() => {});
+});
+
 testAiConfigButton.addEventListener('click', () => {
   testAiConfig().catch(() => {});
 });
@@ -416,4 +439,3 @@ async function bootstrap() {
 bootstrap().catch((error) => {
   cliOutput.textContent = `Startup error: ${error.message}`;
 });
-

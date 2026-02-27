@@ -2,94 +2,99 @@
   {
     "id": "listMarkets",
     "label": "List Markets",
-    "description": "Fetch a list of active markets.",
+    "description": "Fetch a list of markets.",
     "category": "Discovery",
-    "argsTemplate": ["markets", "list", "--json"],
+    "argsTemplate": ["markets", "list", "-o", "json"],
     "requiredParams": []
   },
   {
     "id": "marketDetail",
     "label": "Market Detail",
-    "description": "Show market metadata and implied odds.",
+    "description": "Show market metadata by market id/slug.",
     "category": "Research",
-    "argsTemplate": ["markets", "show", "--id", "{{marketId}}", "--json"],
+    "argsTemplate": ["markets", "get", "{{marketId}}", "-o", "json"],
     "requiredParams": ["marketId"]
   },
   {
     "id": "orderBook",
-    "label": "Order Book",
-    "description": "Show depth and top-of-book.",
+    "label": "Order Book (Token)",
+    "description": "Show orderbook depth for a token id.",
     "category": "Research",
-    "argsTemplate": ["markets", "orderbook", "--id", "{{marketId}}", "--json"],
-    "requiredParams": ["marketId"]
+    "argsTemplate": ["clob", "book", "{{tokenId}}", "-o", "json"],
+    "requiredParams": ["tokenId"]
+  },
+  {
+    "id": "walletAddress",
+    "label": "Wallet Address",
+    "description": "Show configured wallet address.",
+    "category": "Portfolio",
+    "argsTemplate": ["wallet", "address", "-o", "json"],
+    "requiredParams": []
   },
   {
     "id": "openPositions",
     "label": "Open Positions",
-    "description": "Show open account positions.",
+    "description": "Show open positions for a wallet address.",
     "category": "Portfolio",
-    "argsTemplate": ["account", "positions", "--json"],
-    "requiredParams": []
+    "argsTemplate": ["data", "positions", "{{walletAddress}}", "-o", "json"],
+    "requiredParams": ["walletAddress"]
   },
   {
     "id": "openOrders",
     "label": "Open Orders",
     "description": "Show currently open orders.",
     "category": "Portfolio",
-    "argsTemplate": ["orders", "list", "--json"],
+    "argsTemplate": ["clob", "orders", "-o", "json"],
     "requiredParams": []
   },
   {
     "id": "placeBuyOrder",
     "label": "Place BUY Order",
-    "description": "Place a buy order.",
+    "description": "Place a buy limit order.",
     "category": "Execution",
     "argsTemplate": [
-      "orders",
-      "place",
-      "--id",
-      "{{marketId}}",
+      "clob",
+      "create-order",
+      "--token",
+      "{{tokenId}}",
       "--side",
       "buy",
-      "--outcome",
-      "{{outcome}}",
       "--price",
       "{{price}}",
       "--size",
       "{{size}}",
-      "--json"
+      "-o",
+      "json"
     ],
-    "requiredParams": ["marketId", "outcome", "price", "size"]
+    "requiredParams": ["tokenId", "price", "size"]
   },
   {
     "id": "placeSellOrder",
     "label": "Place SELL Order",
-    "description": "Place a sell order.",
+    "description": "Place a sell limit order.",
     "category": "Execution",
     "argsTemplate": [
-      "orders",
-      "place",
-      "--id",
-      "{{marketId}}",
+      "clob",
+      "create-order",
+      "--token",
+      "{{tokenId}}",
       "--side",
       "sell",
-      "--outcome",
-      "{{outcome}}",
       "--price",
       "{{price}}",
       "--size",
       "{{size}}",
-      "--json"
+      "-o",
+      "json"
     ],
-    "requiredParams": ["marketId", "outcome", "price", "size"]
+    "requiredParams": ["tokenId", "price", "size"]
   },
   {
     "id": "cancelOrder",
     "label": "Cancel Order",
     "description": "Cancel an order by id.",
     "category": "Execution",
-    "argsTemplate": ["orders", "cancel", "--order-id", "{{orderId}}", "--json"],
+    "argsTemplate": ["clob", "cancel", "{{orderId}}", "-o", "json"],
     "requiredParams": ["orderId"]
   }
 ]
-

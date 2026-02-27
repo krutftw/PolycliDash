@@ -49,6 +49,7 @@ function probeError(label, probe) {
 
 export function buildLiveOverview({
   marketId,
+  tokenId,
   listMarketsProbe,
   openPositionsProbe,
   openOrdersProbe,
@@ -77,6 +78,7 @@ export function buildLiveOverview({
   return {
     generatedAt: new Date().toISOString(),
     marketId: marketId || null,
+    tokenId: tokenId || null,
     health: {
       ok,
       errors
@@ -97,4 +99,3 @@ export function buildLiveOverview({
     orderbook: orderbookPayload || null
   };
 }
-

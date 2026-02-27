@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Polymarket Matrix Desk</title>
+    <title>PloyCLIDash</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,11 +18,17 @@
     <main class="shell">
       <header class="hero card">
         <div>
-          <p class="eyebrow">Polymarket Matrix Desk</p>
+          <p class="eyebrow">PloyCLIDash</p>
           <h1>Live Trading + AI Research in One Place</h1>
           <p class="subhead">
             This dashboard connects directly to your Polymarket CLI so you can
             watch live data, place actions, and ask AI for market research.
+          </p>
+          <p class="subhead">
+            Community Discord:
+            <a href="https://discord.gg/RSDX3PbCyD" target="_blank" rel="noreferrer"
+              >discord.gg/RSDX3PbCyD</a
+            >
           </p>
         </div>
         <div class="status-grid">
@@ -59,6 +65,14 @@
               placeholder="Optional: test one specific market"
             />
           </label>
+          <label class="field">
+            <span>Optional Token ID Check</span>
+            <input
+              id="setup-token-id"
+              type="text"
+              placeholder="Optional: test one token orderbook"
+            />
+          </label>
         </div>
         <article id="setup-summary" class="wizard-summary"></article>
         <div id="setup-checks" class="wizard-grid"></div>
@@ -85,6 +99,14 @@
               id="live-market-id"
               type="text"
               placeholder="Use for live orderbook + market details"
+            />
+          </label>
+          <label class="field">
+            <span>Focus Token ID (optional)</span>
+            <input
+              id="live-token-id"
+              type="text"
+              placeholder="Use for live orderbook by token"
             />
           </label>
         </div>
@@ -166,6 +188,14 @@
                 type="text"
                 placeholder="e.g. 0xabc..."
                 required
+              />
+            </label>
+            <label class="field">
+              <span>Token ID (optional for orderbook depth)</span>
+              <input
+                id="research-token-id"
+                type="text"
+                placeholder="numeric token id"
               />
             </label>
 
@@ -251,4 +281,3 @@
     <script type="module" src="/app.js"></script>
   </body>
 </html>
-
