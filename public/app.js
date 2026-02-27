@@ -26,11 +26,13 @@ const liveOrderbookOutput = document.querySelector('#live-orderbook-output');
 const presetSelect = document.querySelector('#preset-select');
 const paramFields = document.querySelector('#param-fields');
 const commandForm = document.querySelector('#command-form');
+const runCommandButton = document.querySelector('#run-command');
 const cliOutput = document.querySelector('#cli-output');
 const cliOutputRaw = document.querySelector('#cli-output-raw');
 const lastCommand = document.querySelector('#last-command');
 const refreshPresetsButton = document.querySelector('#refresh-presets');
 const quickTradeForm = document.querySelector('#quick-trade-form');
+const quickTradeSubmitButton = document.querySelector('#quick-trade-submit');
 const quickTradeToken = document.querySelector('#quick-trade-token');
 const quickTradeSide = document.querySelector('#quick-trade-side');
 const quickTradePrice = document.querySelector('#quick-trade-price');
@@ -38,6 +40,7 @@ const quickTradeSize = document.querySelector('#quick-trade-size');
 const quickTradeOutput = document.querySelector('#quick-trade-output');
 
 const researchForm = document.querySelector('#research-form');
+const runResearchButton = document.querySelector('#run-research');
 const researchOutput = document.querySelector('#research-output');
 const researchContext = document.querySelector('#research-context');
 const aiProvider = document.querySelector('#ai-provider');
@@ -50,7 +53,22 @@ const aiTestResult = document.querySelector('#ai-test-result');
 const state = {
   presets: [],
   selectedPreset: null,
-  liveTimer: null
+  liveTimer: null,
+  isRefreshingLive: false,
+  isRunningSetup: false,
+  isRunningAction: false,
+  isSubmittingTrade: false,
+  isRunningResearch: false,
+  isTestingAi: false
+};
+
+const PARAM_META = {
+  marketId: { label: 'Market ID', placeholder: 'Paste market ID or slug' },
+  tokenId: { label: 'Token ID', placeholder: 'Numeric token ID' },
+  walletAddress: { label: 'Wallet Address', placeholder: '0x...' },
+  orderId: { label: 'Order ID', placeholder: 'Order ID from open orders' },
+  price: { label: 'Price', placeholder: '0.50' },
+  size: { label: 'Size', placeholder: '10' }
 };
 
 function setStatus(target, isHealthy, text) {
@@ -64,6 +82,17 @@ function toPretty(value) {
     return value;
   }
   return JSON.stringify(value, null, 2);
+}
+
+function shortText(value, limit = 96) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) {
+    return '';
+  }
+  if (text.length <= limit) {
+    return text;
+  }
+  return `${text.slice(0, limit - 1)}...`;
 }
 
 function compactText(value) {
@@ -161,7 +190,7 @@ function pickValue(item, keys) {
 function summarizeItems(payload, fieldMap) {
   const items = asArray(payload);
   if (items.length === 0) {
-    return 'No data.';
+    return 'No data yet.';
   }
 
   const lines = items.slice(0, 12).map((item, index) => {
@@ -170,12 +199,13 @@ function summarizeItems(payload, fieldMap) {
     }
 
     const parts = fieldMap
-      .map(({ label, keys }) => {
+      .map(({ label, keys, format }) => {
         const value = pickValue(item, keys);
         if (value === null) {
           return null;
         }
-        return `${label}: ${String(value)}`;
+        const formattedValue = typeof format === 'function' ? format(value, item) : value;
+        return `${label}: ${String(formattedValue)}`;
       })
       .filter(Boolean);
 
@@ -211,7 +241,10 @@ function summarizeActionResult(presetId, payload) {
     }
     const preview = items
       .slice(0, 5)
-      .map((item, idx) => `${idx + 1}. ${pickValue(item, ['question', 'title', 'name']) || 'Market'}`)
+      .map(
+        (item, idx) =>
+          `${idx + 1}. ${shortText(pickValue(item, ['question', 'title', 'name']) || 'Market', 92)}`
+      )
       .join('\n');
     return `Loaded ${items.length} markets.\n\nTop results:\n${preview}`;
   }
@@ -283,6 +316,32 @@ function formatActionFailure(result) {
 
   const cleanError = humanizeErrorText(primaryError);
   return `Action failed.\n${cleanError}`;
+}
+
+function setButtonBusy(button, busy, idleLabel, busyLabel) {
+  if (!button) {
+    return;
+  }
+  button.disabled = busy;
+  button.textContent = busy ? busyLabel : idleLabel;
+}
+
+function validateQuickTradeInput(params) {
+  if (!/^\d+$/.test(params.tokenId)) {
+    return 'Token ID must be numeric.';
+  }
+
+  const price = Number(params.price);
+  if (!Number.isFinite(price) || price <= 0 || price >= 1) {
+    return 'Price must be a number between 0 and 1.';
+  }
+
+  const size = Number(params.size);
+  if (!Number.isFinite(size) || size <= 0) {
+    return 'Size must be a positive number.';
+  }
+
+  return null;
 }
 
 function escapeHtml(raw) {
@@ -390,6 +449,11 @@ function renderSetup(data) {
 }
 
 async function runSetupWizard() {
+  if (state.isRunningSetup) {
+    return;
+  }
+  state.isRunningSetup = true;
+  setButtonBusy(runSetupButton, true, 'Check My Setup', 'Checking...');
   setupSummary.className = 'wizard-summary';
   setupSummary.textContent = 'Checking your setup...';
   setupChecks.innerHTML = '';
@@ -413,6 +477,9 @@ async function runSetupWizard() {
   } catch (error) {
     setupSummary.className = 'wizard-summary bad';
     setupSummary.textContent = `Setup check failed: ${error.message}`;
+  } finally {
+    state.isRunningSetup = false;
+    setButtonBusy(runSetupButton, false, 'Check My Setup', 'Checking...');
   }
 }
 
@@ -425,7 +492,11 @@ function renderLiveOverview(data) {
 
   liveMarketsOutput.textContent = summarizeItems(data.marketList.data, [
     { label: 'ID', keys: ['id', 'condition_id', 'slug'] },
-    { label: 'Q', keys: ['question', 'title', 'name'] },
+    {
+      label: 'Q',
+      keys: ['question', 'title', 'name'],
+      format: (value) => shortText(value, 84)
+    },
     { label: 'Active', keys: ['active', 'closed'] },
     { label: 'Volume', keys: ['volume', 'volume_num'] }
   ]);
@@ -447,14 +518,10 @@ function renderLiveOverview(data) {
 
   const orderbookLines = [];
   if (data.market) {
-    orderbookLines.push(
-      `Market: ${compactText(
-        toPretty({
-          id: data.market.id || data.market.slug || data.market.condition_id,
-          question: data.market.question || data.market.title
-        })
-      )}`
-    );
+    const marketId = data.market.id || data.market.slug || data.market.condition_id || 'unknown';
+    const question = shortText(data.market.question || data.market.title || 'Unknown market', 120);
+    orderbookLines.push(`Market: ${marketId}`);
+    orderbookLines.push(`Question: ${question}`);
   }
   if (data.orderbook) {
     orderbookLines.push(`Orderbook: ${compactText(toPretty(data.orderbook))}`);
@@ -471,7 +538,16 @@ function renderLiveOverview(data) {
   liveOrderbookOutput.textContent = orderbookLines.join('\n');
 }
 
-async function refreshLiveOverview() {
+async function refreshLiveOverview(options = {}) {
+  const manual = Boolean(options.manual);
+  if (state.isRefreshingLive) {
+    return;
+  }
+  state.isRefreshingLive = true;
+  if (manual) {
+    setButtonBusy(runLiveButton, true, 'Refresh Now', 'Refreshing...');
+  }
+
   try {
     const marketId = liveMarketIdInput.value.trim();
     const tokenId = liveTokenIdInput.value.trim();
@@ -488,6 +564,11 @@ async function refreshLiveOverview() {
   } catch (error) {
     setStatus(liveHealth, false, 'Error');
     liveOrderbookOutput.textContent = `Live refresh failed: ${error.message}`;
+  } finally {
+    state.isRefreshingLive = false;
+    if (manual) {
+      setButtonBusy(runLiveButton, false, 'Refresh Now', 'Refreshing...');
+    }
   }
 }
 
@@ -518,16 +599,17 @@ function buildParamInputs(preset) {
   }
 
   params.forEach((paramName) => {
+    const meta = PARAM_META[paramName] || {};
     const label = document.createElement('label');
     label.className = 'field';
 
     const title = document.createElement('span');
-    title.textContent = paramName;
+    title.textContent = meta.label || paramName;
 
     const input = document.createElement('input');
     input.type = 'text';
     input.name = paramName;
-    input.placeholder = `Enter ${paramName}`;
+    input.placeholder = meta.placeholder || `Enter ${paramName}`;
     input.required = true;
 
     label.append(title, input);
@@ -558,6 +640,11 @@ async function loadPresets() {
 }
 
 async function testAiConfig() {
+  if (state.isTestingAi) {
+    return;
+  }
+  state.isTestingAi = true;
+  setButtonBusy(testAiConfigButton, true, 'Test AI Connection', 'Testing...');
   aiTestResult.textContent = 'Testing AI connection...';
   try {
     const result = await getJson('/api/ai/test', {
@@ -575,6 +662,9 @@ async function testAiConfig() {
   } catch (error) {
     aiTestResult.textContent = `AI test failed: ${error.message}`;
     aiTestResult.className = 'panel-note bad';
+  } finally {
+    state.isTestingAi = false;
+    setButtonBusy(testAiConfigButton, false, 'Test AI Connection', 'Testing...');
   }
 }
 
@@ -585,9 +675,11 @@ presetSelect.addEventListener('change', () => {
 
 commandForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!state.selectedPreset) {
+  if (!state.selectedPreset || state.isRunningAction) {
     return;
   }
+  state.isRunningAction = true;
+  setButtonBusy(runCommandButton, true, 'Run Action', 'Running...');
 
   const formData = new FormData(commandForm);
   const params = {};
@@ -628,11 +720,17 @@ commandForm.addEventListener('submit', async (event) => {
   } catch (error) {
     cliOutput.textContent = `Error: ${error.message}`;
     cliOutputRaw.textContent = '';
+  } finally {
+    state.isRunningAction = false;
+    setButtonBusy(runCommandButton, false, 'Run Action', 'Running...');
   }
 });
 
 quickTradeForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (state.isSubmittingTrade) {
+    return;
+  }
   const side = quickTradeSide.value;
   const presetId = side === 'sell' ? 'placeSellOrder' : 'placeBuyOrder';
   const params = {
@@ -641,6 +739,14 @@ quickTradeForm.addEventListener('submit', async (event) => {
     size: quickTradeSize.value.trim()
   };
 
+  const validationError = validateQuickTradeInput(params);
+  if (validationError) {
+    quickTradeOutput.textContent = validationError;
+    return;
+  }
+
+  state.isSubmittingTrade = true;
+  setButtonBusy(quickTradeSubmitButton, true, 'Submit Trade', 'Submitting...');
   quickTradeOutput.textContent = 'Submitting trade...';
   try {
     const result = await getJson('/api/cli/run', {
@@ -661,11 +767,17 @@ quickTradeForm.addEventListener('submit', async (event) => {
     refreshLiveOverview().catch(() => {});
   } catch (error) {
     quickTradeOutput.textContent = `Trade failed: ${error.message}`;
+  } finally {
+    state.isSubmittingTrade = false;
+    setButtonBusy(quickTradeSubmitButton, false, 'Submit Trade', 'Submitting...');
   }
 });
 
 researchForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (state.isRunningResearch) {
+    return;
+  }
 
   const marketId = document.querySelector('#research-market-id').value.trim();
   const tokenId = document.querySelector('#research-token-id').value.trim();
@@ -673,6 +785,8 @@ researchForm.addEventListener('submit', async (event) => {
   const timeHorizon = document.querySelector('#research-horizon').value;
   const riskTolerance = document.querySelector('#research-risk').value;
 
+  state.isRunningResearch = true;
+  setButtonBusy(runResearchButton, true, 'Get Research', 'Researching...');
   researchOutput.textContent = 'Building research view...';
   researchContext.textContent = '';
 
@@ -694,6 +808,9 @@ researchForm.addEventListener('submit', async (event) => {
     researchContext.textContent = toPretty(result.context);
   } catch (error) {
     researchOutput.textContent = `Research failed: ${error.message}`;
+  } finally {
+    state.isRunningResearch = false;
+    setButtonBusy(runResearchButton, false, 'Get Research', 'Researching...');
   }
 });
 
@@ -712,7 +829,7 @@ runSetupButton.addEventListener('click', () => {
 });
 
 runLiveButton.addEventListener('click', () => {
-  refreshLiveOverview().catch(() => {});
+  refreshLiveOverview({ manual: true }).catch(() => {});
 });
 
 liveAutoToggle.addEventListener('change', () => {

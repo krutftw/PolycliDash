@@ -71,6 +71,7 @@
               id="setup-market-id"
               type="text"
               placeholder="Optional: test one specific market"
+              autocomplete="off"
             />
           </label>
           <label class="field">
@@ -79,6 +80,8 @@
               id="setup-token-id"
               type="text"
               placeholder="Optional: test one token orderbook"
+              autocomplete="off"
+              inputmode="numeric"
             />
           </label>
         </div>
@@ -107,6 +110,7 @@
               id="live-market-id"
               type="text"
               placeholder="Use for live orderbook + market details"
+              autocomplete="off"
             />
           </label>
           <label class="field">
@@ -115,6 +119,8 @@
               id="live-token-id"
               type="text"
               placeholder="Use for live orderbook by token"
+              autocomplete="off"
+              inputmode="numeric"
             />
           </label>
         </div>
@@ -162,6 +168,8 @@
                 type="text"
                 placeholder="numeric token id"
                 required
+                autocomplete="off"
+                inputmode="numeric"
               />
             </label>
             <label class="field">
@@ -177,18 +185,25 @@
               <span>Price</span>
               <input
                 id="quick-trade-price"
-                type="text"
+                type="number"
                 placeholder="0.50"
                 required
+                autocomplete="off"
+                min="0.001"
+                max="0.999"
+                step="0.001"
               />
             </label>
             <label class="field">
               <span>Size (shares)</span>
               <input
                 id="quick-trade-size"
-                type="text"
+                type="number"
                 placeholder="10"
                 required
+                autocomplete="off"
+                min="0.001"
+                step="0.001"
               />
             </label>
           </div>
@@ -254,6 +269,7 @@
                 type="text"
                 placeholder="e.g. 0xabc..."
                 required
+                autocomplete="off"
               />
             </label>
             <label class="field">
@@ -262,6 +278,8 @@
                 id="research-token-id"
                 type="text"
                 placeholder="numeric token id"
+                autocomplete="off"
+                inputmode="numeric"
               />
             </label>
 
@@ -311,11 +329,12 @@
                       id="ai-base-url"
                       type="text"
                       placeholder="http://localhost:11434"
+                      autocomplete="off"
                     />
                   </label>
                   <label class="field">
                     <span>Model Name</span>
-                    <input id="ai-model" type="text" placeholder="glm-5" />
+                    <input id="ai-model" type="text" placeholder="glm-5" autocomplete="off" />
                   </label>
                 </div>
                 <label class="field">
