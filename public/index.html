@@ -45,7 +45,15 @@
         </div>
       </header>
 
-      <section class="card panel setup-panel">
+      <nav class="quick-nav card">
+        <a class="quick-link" href="#setup">Setup</a>
+        <a class="quick-link" href="#live">Live Feed</a>
+        <a class="quick-link" href="#quick-trade">Quick Trade</a>
+        <a class="quick-link" href="#actions">Actions</a>
+        <a class="quick-link" href="#research">AI Research</a>
+      </nav>
+
+      <section id="setup" class="card panel setup-panel">
         <div class="panel-head">
           <h2>Quick Setup Check</h2>
           <button id="run-setup" class="primary-btn" type="button">
@@ -78,7 +86,7 @@
         <div id="setup-checks" class="wizard-grid"></div>
       </section>
 
-      <section class="card panel live-panel">
+      <section id="live" class="card panel live-panel">
         <div class="panel-head">
           <h2>Live Matrix Feed</h2>
           <div class="inline-actions">
@@ -137,8 +145,62 @@
         </div>
       </section>
 
+      <section id="quick-trade" class="card panel trade-panel">
+        <div class="panel-head">
+          <h2>Quick Trade</h2>
+        </div>
+        <p class="panel-note">
+          Fast buy/sell flow for traders. Fill token, price, and size, then
+          click submit.
+        </p>
+        <form id="quick-trade-form" class="stack">
+          <div class="param-grid">
+            <label class="field">
+              <span>Token ID</span>
+              <input
+                id="quick-trade-token"
+                type="text"
+                placeholder="numeric token id"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Side</span>
+              <select id="quick-trade-side">
+                <option value="buy" selected>Buy</option>
+                <option value="sell">Sell</option>
+              </select>
+            </label>
+          </div>
+          <div class="param-grid">
+            <label class="field">
+              <span>Price</span>
+              <input
+                id="quick-trade-price"
+                type="text"
+                placeholder="0.50"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Size (shares)</span>
+              <input
+                id="quick-trade-size"
+                type="text"
+                placeholder="10"
+                required
+              />
+            </label>
+          </div>
+          <button id="quick-trade-submit" class="primary-btn" type="submit">
+            Submit Trade
+          </button>
+        </form>
+        <article id="quick-trade-output" class="analysis action-output"></article>
+      </section>
+
       <section class="content-grid">
-        <article class="card panel">
+        <article id="actions" class="card panel">
           <div class="panel-head">
             <h2>Action Buttons</h2>
             <button id="refresh-presets" class="ghost-btn" type="button">
@@ -167,10 +229,14 @@
             <h3>Result</h3>
             <span id="last-command"></span>
           </div>
-          <pre id="cli-output" class="console"></pre>
+          <article id="cli-output" class="analysis action-output"></article>
+          <details>
+            <summary>Raw technical output</summary>
+            <pre id="cli-output-raw" class="console"></pre>
+          </details>
         </article>
 
-        <article class="card panel">
+        <article id="research" class="card panel">
           <div class="panel-head">
             <h2>AI Research Assistant</h2>
             <span class="pill">Default: GLM-5</span>

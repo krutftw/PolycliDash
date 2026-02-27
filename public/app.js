@@ -27,8 +27,15 @@ const presetSelect = document.querySelector('#preset-select');
 const paramFields = document.querySelector('#param-fields');
 const commandForm = document.querySelector('#command-form');
 const cliOutput = document.querySelector('#cli-output');
+const cliOutputRaw = document.querySelector('#cli-output-raw');
 const lastCommand = document.querySelector('#last-command');
 const refreshPresetsButton = document.querySelector('#refresh-presets');
+const quickTradeForm = document.querySelector('#quick-trade-form');
+const quickTradeToken = document.querySelector('#quick-trade-token');
+const quickTradeSide = document.querySelector('#quick-trade-side');
+const quickTradePrice = document.querySelector('#quick-trade-price');
+const quickTradeSize = document.querySelector('#quick-trade-size');
+const quickTradeOutput = document.querySelector('#quick-trade-output');
 
 const researchForm = document.querySelector('#research-form');
 const researchOutput = document.querySelector('#research-output');
@@ -71,6 +78,59 @@ function compactText(value) {
     )
     .slice(0, 2)
     .join(' | ');
+}
+
+function humanizeErrorText(raw) {
+  let text = String(raw || '').trim();
+  if (!text) {
+    return 'Unknown error';
+  }
+
+  for (let depth = 0; depth < 3; depth += 1) {
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed === 'string') {
+        text = parsed.trim();
+        continue;
+      }
+
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.error === 'string') {
+          text = parsed.error.trim();
+          continue;
+        }
+
+        if (typeof parsed.message === 'string') {
+          text = parsed.message.trim();
+          continue;
+        }
+
+        text = toPretty(parsed);
+      }
+    } catch {
+      break;
+    }
+  }
+
+  text = text.replaceAll('\\n', '\n').replaceAll('\\"', '"').trim();
+
+  const embeddedJson = text.match(/\{[\s\S]*\}$/);
+  if (embeddedJson) {
+    try {
+      const parsedEmbedded = JSON.parse(embeddedJson[0]);
+      if (typeof parsedEmbedded?.error === 'string') {
+        text = parsedEmbedded.error.trim();
+      }
+    } catch {
+      // keep original text if embedded JSON is not parseable
+    }
+  }
+
+  if (/fee rate not found for market/i.test(text)) {
+    return 'Token is not tradable right now. Check token ID and market status.';
+  }
+
+  return compactText(text) || 'Unknown error';
 }
 
 function asArray(payload) {
@@ -130,6 +190,99 @@ function summarizeItems(payload, fieldMap) {
   }
 
   return lines.join('\n');
+}
+
+function summarizeActionResult(presetId, payload) {
+  if (!payload) {
+    return 'Action completed, but there is no response data.';
+  }
+
+  if (presetId === 'walletAddress') {
+    const address = pickValue(payload, ['address', 'wallet']);
+    return address
+      ? `Wallet connected: ${address}`
+      : 'Wallet check completed.';
+  }
+
+  if (presetId === 'listMarkets') {
+    const items = asArray(payload);
+    if (items.length === 0) {
+      return 'No markets returned.';
+    }
+    const preview = items
+      .slice(0, 5)
+      .map((item, idx) => `${idx + 1}. ${pickValue(item, ['question', 'title', 'name']) || 'Market'}`)
+      .join('\n');
+    return `Loaded ${items.length} markets.\n\nTop results:\n${preview}`;
+  }
+
+  if (presetId === 'marketDetail') {
+    return summarizeItems(payload, [
+      { label: 'ID', keys: ['id', 'condition_id', 'slug'] },
+      { label: 'Question', keys: ['question', 'title', 'name'] },
+      { label: 'Active', keys: ['active', 'closed'] },
+      { label: 'Volume', keys: ['volume', 'volume_num'] }
+    ]);
+  }
+
+  if (presetId === 'openPositions') {
+    const items = asArray(payload);
+    return items.length === 0
+      ? 'No open positions.'
+      : `Found ${items.length} open positions.\n\n${summarizeItems(payload, [
+          { label: 'Market', keys: ['market', 'conditionId', 'condition_id', 'market_id'] },
+          { label: 'Outcome', keys: ['outcome', 'side'] },
+          { label: 'Size', keys: ['size', 'shares', 'quantity'] }
+        ])}`;
+  }
+
+  if (presetId === 'openOrders') {
+    const items = asArray(payload);
+    return items.length === 0
+      ? 'No open orders.'
+      : `Found ${items.length} open orders.\n\n${summarizeItems(payload, [
+          { label: 'Order', keys: ['id', 'order_id'] },
+          { label: 'Side', keys: ['side'] },
+          { label: 'Price', keys: ['price'] },
+          { label: 'Size', keys: ['size', 'quantity'] }
+        ])}`;
+  }
+
+  if (presetId === 'orderBook') {
+    return `Orderbook loaded.\n${compactText(toPretty(payload))}`;
+  }
+
+  if (presetId === 'placeBuyOrder' || presetId === 'placeSellOrder') {
+    const sideText = presetId === 'placeBuyOrder' ? 'Buy' : 'Sell';
+    const orderId = pickValue(payload, ['id', 'orderID', 'order_id']);
+    const status = pickValue(payload, ['status', 'state']);
+    return `${sideText} order submitted.\n${orderId ? `Order ID: ${orderId}\n` : ''}${
+      status ? `Status: ${status}` : 'Check Open Orders to confirm.'
+    }`;
+  }
+
+  if (presetId === 'cancelOrder') {
+    const status = pickValue(payload, ['status', 'state', 'result']);
+    return `Cancel request submitted.${status ? `\nStatus: ${status}` : ''}`;
+  }
+
+  return `Action completed.\n${compactText(toPretty(payload))}`;
+}
+
+function formatActionFailure(result) {
+  const primaryError =
+    (result?.parsed &&
+      (typeof result.parsed.error === 'string'
+        ? result.parsed.error
+        : typeof result.parsed.message === 'string'
+          ? result.parsed.message
+          : null)) ||
+    result.stderr ||
+    result.stdout ||
+    'Unknown error';
+
+  const cleanError = humanizeErrorText(primaryError);
+  return `Action failed.\n${cleanError}`;
 }
 
 function escapeHtml(raw) {
@@ -443,6 +596,7 @@ commandForm.addEventListener('submit', async (event) => {
   }
 
   cliOutput.textContent = 'Running action...';
+  cliOutputRaw.textContent = '';
   try {
     const result = await getJson('/api/cli/run', {
       method: 'POST',
@@ -456,20 +610,57 @@ commandForm.addEventListener('submit', async (event) => {
     lastCommand.textContent = result.command.join(' ');
 
     if (!result.success) {
-      cliOutput.textContent = [
-        'Action failed.',
-        '',
-        `Error:\n${result.stderr || '(empty)'}`,
-        '',
-        `Output:\n${result.stdout || '(empty)'}`
-      ].join('\n');
+      cliOutput.textContent = formatActionFailure(result);
+      cliOutputRaw.textContent = `stderr:\n${result.stderr || '(empty)'}\n\nstdout:\n${
+        result.stdout || '(empty)'
+      }`;
       return;
     }
 
-    cliOutput.textContent = result.parsed ? toPretty(result.parsed) : result.stdout || '(no output)';
+    cliOutput.textContent = summarizeActionResult(
+      state.selectedPreset.id,
+      result.parsed ?? result.stdout
+    );
+    cliOutputRaw.textContent = result.parsed
+      ? toPretty(result.parsed)
+      : result.stdout || '(no output)';
     refreshLiveOverview().catch(() => {});
   } catch (error) {
     cliOutput.textContent = `Error: ${error.message}`;
+    cliOutputRaw.textContent = '';
+  }
+});
+
+quickTradeForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const side = quickTradeSide.value;
+  const presetId = side === 'sell' ? 'placeSellOrder' : 'placeBuyOrder';
+  const params = {
+    tokenId: quickTradeToken.value.trim(),
+    price: quickTradePrice.value.trim(),
+    size: quickTradeSize.value.trim()
+  };
+
+  quickTradeOutput.textContent = 'Submitting trade...';
+  try {
+    const result = await getJson('/api/cli/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presetId, params })
+    });
+
+    if (!result.success) {
+      quickTradeOutput.textContent = formatActionFailure(result);
+      return;
+    }
+
+    quickTradeOutput.textContent = summarizeActionResult(
+      presetId,
+      result.parsed ?? result.stdout
+    );
+    refreshLiveOverview().catch(() => {});
+  } catch (error) {
+    quickTradeOutput.textContent = `Trade failed: ${error.message}`;
   }
 });
 
@@ -549,4 +740,5 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   cliOutput.textContent = `Startup error: ${error.message}`;
+  cliOutputRaw.textContent = '';
 });
