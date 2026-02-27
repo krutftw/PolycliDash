@@ -159,6 +159,10 @@ function humanizeErrorText(raw) {
     return 'Token is not tradable right now. Check token ID and market status.';
   }
 
+  if (/unauthorized/i.test(text)) {
+    return 'GLM-5 cloud needs Ollama sign-in. Run: ollama signin';
+  }
+
   return compactText(text) || 'Unknown error';
 }
 
