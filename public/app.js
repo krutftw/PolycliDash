@@ -59,6 +59,79 @@ function toPretty(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function compactText(value) {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.startsWith('Usage:') &&
+        !line.startsWith('For more information')
+    )
+    .slice(0, 2)
+    .join(' | ');
+}
+
+function asArray(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (payload && typeof payload === 'object') {
+    if (Array.isArray(payload.data)) {
+      return payload.data;
+    }
+    if (Array.isArray(payload.items)) {
+      return payload.items;
+    }
+    return [payload];
+  }
+  return [];
+}
+
+function pickValue(item, keys) {
+  for (const key of keys) {
+    if (item[key] !== undefined && item[key] !== null && item[key] !== '') {
+      return item[key];
+    }
+  }
+  return null;
+}
+
+function summarizeItems(payload, fieldMap) {
+  const items = asArray(payload);
+  if (items.length === 0) {
+    return 'No data.';
+  }
+
+  const lines = items.slice(0, 12).map((item, index) => {
+    if (!item || typeof item !== 'object') {
+      return `${index + 1}. ${String(item)}`;
+    }
+
+    const parts = fieldMap
+      .map(({ label, keys }) => {
+        const value = pickValue(item, keys);
+        if (value === null) {
+          return null;
+        }
+        return `${label}: ${String(value)}`;
+      })
+      .filter(Boolean);
+
+    if (parts.length === 0) {
+      return `${index + 1}. ${toPretty(item)}`;
+    }
+    return `${index + 1}. ${parts.join(' | ')}`;
+  });
+
+  if (items.length > 12) {
+    lines.push(`... and ${items.length - 12} more`);
+  }
+
+  return lines.join('\n');
+}
+
 function escapeHtml(raw) {
   return String(raw)
     .replaceAll('&', '&amp;')
@@ -156,7 +229,7 @@ function renderSetup(data) {
         <h4>${escapeHtml(check.title)}</h4>
         <span class="check-state">${escapeHtml(check.status.toUpperCase())}</span>
       </header>
-      <p>${escapeHtml(check.detail || '-')}</p>
+      <p>${escapeHtml(compactText(check.detail || '-'))}</p>
       ${check.fix ? `<small>Fix: ${escapeHtml(check.fix)}</small>` : ''}
     `;
     setupChecks.append(item);
@@ -197,14 +270,52 @@ function renderLiveOverview(data) {
   liveOrderCount.textContent = String(data.orders.count);
   liveUpdated.textContent = formatTime(data.generatedAt);
 
-  liveMarketsOutput.textContent = toPretty(data.marketList.data || []);
-  livePositionsOutput.textContent = toPretty(data.positions.data || []);
-  liveOrdersOutput.textContent = toPretty(data.orders.data || []);
-  liveOrderbookOutput.textContent = toPretty({
-    market: data.market,
-    orderbook: data.orderbook,
-    errors: data.health.errors
-  });
+  liveMarketsOutput.textContent = summarizeItems(data.marketList.data, [
+    { label: 'ID', keys: ['id', 'condition_id', 'slug'] },
+    { label: 'Q', keys: ['question', 'title', 'name'] },
+    { label: 'Active', keys: ['active', 'closed'] },
+    { label: 'Volume', keys: ['volume', 'volume_num'] }
+  ]);
+
+  livePositionsOutput.textContent = summarizeItems(data.positions.data, [
+    { label: 'Market', keys: ['market', 'conditionId', 'condition_id', 'market_id'] },
+    { label: 'Outcome', keys: ['outcome', 'side'] },
+    { label: 'Size', keys: ['size', 'shares', 'quantity'] },
+    { label: 'Value', keys: ['value', 'notional', 'pnl'] }
+  ]);
+
+  liveOrdersOutput.textContent = summarizeItems(data.orders.data, [
+    { label: 'Order', keys: ['id', 'order_id'] },
+    { label: 'Side', keys: ['side'] },
+    { label: 'Price', keys: ['price'] },
+    { label: 'Size', keys: ['size', 'quantity'] },
+    { label: 'Status', keys: ['status'] }
+  ]);
+
+  const orderbookLines = [];
+  if (data.market) {
+    orderbookLines.push(
+      `Market: ${compactText(
+        toPretty({
+          id: data.market.id || data.market.slug || data.market.condition_id,
+          question: data.market.question || data.market.title
+        })
+      )}`
+    );
+  }
+  if (data.orderbook) {
+    orderbookLines.push(`Orderbook: ${compactText(toPretty(data.orderbook))}`);
+  } else {
+    orderbookLines.push('Orderbook: Add a token id to load orderbook depth.');
+  }
+  if (Array.isArray(data.health.errors) && data.health.errors.length > 0) {
+    orderbookLines.push('Issues:');
+    data.health.errors.forEach((err) => {
+      orderbookLines.push(`- ${compactText(err)}`);
+    });
+  }
+
+  liveOrderbookOutput.textContent = orderbookLines.join('\n');
 }
 
 async function refreshLiveOverview() {

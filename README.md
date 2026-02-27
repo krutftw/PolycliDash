@@ -15,7 +15,10 @@ A customer-friendly dashboard that wraps your Polymarket CLI into click-driven w
 ## Community
 
 - Discord: https://discord.gg/RSDX3PbCyD
-- Support/Donate: https://github.com/sponsors/krutftw
+- Support/Donate:
+  - GitHub: https://github.com/krutftw
+  - Polygon wallet (USDC.e on Polygon POS): `0x8485E245e6103C337F56A64957911c8653A7cEE2`
+  - Explorer: https://polygonscan.com/address/0x8485E245e6103C337F56A64957911c8653A7cEE2
 
 ## Quick start
 
