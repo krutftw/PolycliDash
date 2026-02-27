@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Polymarket Matrix Desk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="rain-layer" aria-hidden="true"></div>
+
+    <main class="shell">
+      <header class="hero card">
+        <div>
+          <p class="eyebrow">Polymarket Matrix Desk</p>
+          <h1>Live Trading + AI Research in One Place</h1>
+          <p class="subhead">
+            This dashboard connects directly to your Polymarket CLI so you can
+            watch live data, place actions, and ask AI for market research.
+          </p>
+        </div>
+        <div class="status-grid">
+          <article class="status-tile">
+            <p>CLI Connection</p>
+            <strong id="cli-status">Checking...</strong>
+            <small id="cli-detail">-</small>
+          </article>
+          <article class="status-tile">
+            <p>Default AI (GLM-5)</p>
+            <strong id="ai-status">Checking...</strong>
+            <small id="ai-detail">-</small>
+          </article>
+        </div>
+      </header>
+
+      <section class="card panel setup-panel">
+        <div class="panel-head">
+          <h2>Quick Setup Check</h2>
+          <button id="run-setup" class="primary-btn" type="button">
+            Check My Setup
+          </button>
+        </div>
+        <p class="panel-note">
+          New users can run this first to confirm account access, order actions,
+          and AI connection.
+        </p>
+        <div class="param-grid">
+          <label class="field">
+            <span>Optional Market ID Check</span>
+            <input
+              id="setup-market-id"
+              type="text"
+              placeholder="Optional: test one specific market"
+            />
+          </label>
+        </div>
+        <article id="setup-summary" class="wizard-summary"></article>
+        <div id="setup-checks" class="wizard-grid"></div>
+      </section>
+
+      <section class="card panel live-panel">
+        <div class="panel-head">
+          <h2>Live Matrix Feed</h2>
+          <div class="inline-actions">
+            <button id="run-live" class="ghost-btn" type="button">Refresh Now</button>
+            <label class="toggle">
+              <input id="live-auto" type="checkbox" checked />
+              <span>Auto Refresh</span>
+            </label>
+          </div>
+        </div>
+        <p class="panel-note">
+          Pulls fresh data from Polymarket CLI on a timer. No mock values.
+        </p>
+        <div class="param-grid">
+          <label class="field">
+            <span>Focus Market ID (optional)</span>
+            <input
+              id="live-market-id"
+              type="text"
+              placeholder="Use for live orderbook + market details"
+            />
+          </label>
+        </div>
+        <div class="metric-grid">
+          <article class="metric"><p>Feed Health</p><strong id="live-health">-</strong></article>
+          <article class="metric"><p>Markets</p><strong id="live-market-count">-</strong></article>
+          <article class="metric"><p>Positions</p><strong id="live-position-count">-</strong></article>
+          <article class="metric"><p>Open Orders</p><strong id="live-order-count">-</strong></article>
+          <article class="metric"><p>Last Update</p><strong id="live-updated">-</strong></article>
+        </div>
+        <div class="live-grid">
+          <div>
+            <h3>Markets (live)</h3>
+            <pre id="live-markets-output" class="console"></pre>
+          </div>
+          <div>
+            <h3>Positions (live)</h3>
+            <pre id="live-positions-output" class="console"></pre>
+          </div>
+          <div>
+            <h3>Open Orders (live)</h3>
+            <pre id="live-orders-output" class="console"></pre>
+          </div>
+          <div>
+            <h3>Orderbook / Market Focus</h3>
+            <pre id="live-orderbook-output" class="console"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <article class="card panel">
+          <div class="panel-head">
+            <h2>Action Buttons</h2>
+            <button id="refresh-presets" class="ghost-btn" type="button">
+              Refresh List
+            </button>
+          </div>
+          <p class="panel-note">
+            Choose an action and run it. This is a click-friendly wrapper for
+            your Polymarket CLI presets.
+          </p>
+
+          <form id="command-form" class="stack">
+            <label class="field">
+              <span>Action</span>
+              <select id="preset-select" required></select>
+            </label>
+
+            <div id="param-fields" class="param-grid"></div>
+
+            <button id="run-command" class="primary-btn" type="submit">
+              Run Action
+            </button>
+          </form>
+
+          <div class="result-header">
+            <h3>Result</h3>
+            <span id="last-command"></span>
+          </div>
+          <pre id="cli-output" class="console"></pre>
+        </article>
+
+        <article class="card panel">
+          <div class="panel-head">
+            <h2>AI Research Assistant</h2>
+            <span class="pill">Default: GLM-5</span>
+          </div>
+          <p class="panel-note">
+            Ask for a clear trade view. You can keep default GLM-5 or use a
+            custom provider/model with API key.
+          </p>
+
+          <form id="research-form" class="stack">
+            <label class="field">
+              <span>Market ID</span>
+              <input
+                id="research-market-id"
+                type="text"
+                placeholder="e.g. 0xabc..."
+                required
+              />
+            </label>
+
+            <label class="field">
+              <span>Your Question</span>
+              <textarea
+                id="research-question"
+                rows="4"
+                placeholder="Example: Which side is stronger and where does this trade fail?"
+                required
+              ></textarea>
+            </label>
+
+            <div class="param-grid">
+              <label class="field">
+                <span>Time Horizon</span>
+                <select id="research-horizon">
+                  <option value="intraday">Today</option>
+                  <option value="swing" selected>1-7 days</option>
+                  <option value="event">Until market resolves</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Risk Style</span>
+                <select id="research-risk">
+                  <option value="conservative">Low risk</option>
+                  <option value="moderate" selected>Balanced</option>
+                  <option value="aggressive">Higher risk</option>
+                </select>
+              </label>
+            </div>
+
+            <details>
+              <summary>Custom AI Model (optional)</summary>
+              <div class="stack top-gap">
+                <label class="field">
+                  <span>Provider</span>
+                  <select id="ai-provider">
+                    <option value="ollama" selected>Ollama (GLM-5 enforced)</option>
+                    <option value="openai-compatible">OpenAI-compatible API</option>
+                  </select>
+                </label>
+                <div class="param-grid">
+                  <label class="field">
+                    <span>AI Base URL</span>
+                    <input
+                      id="ai-base-url"
+                      type="text"
+                      placeholder="http://localhost:11434"
+                    />
+                  </label>
+                  <label class="field">
+                    <span>Model Name</span>
+                    <input id="ai-model" type="text" placeholder="glm-5" />
+                  </label>
+                </div>
+                <label class="field">
+                  <span>API Key (only for OpenAI-compatible)</span>
+                  <input id="ai-api-key" type="password" placeholder="sk-..." />
+                </label>
+                <button id="test-ai-config" class="ghost-btn" type="button">
+                  Test AI Connection
+                </button>
+                <p id="ai-test-result" class="panel-note"></p>
+              </div>
+            </details>
+
+            <button id="run-research" class="primary-btn" type="submit">
+              Get Research
+            </button>
+          </form>
+
+          <h3>AI Output</h3>
+          <article id="research-output" class="analysis"></article>
+          <details>
+            <summary>Market Context Sent to AI</summary>
+            <pre id="research-context" class="console"></pre>
+          </details>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
+
