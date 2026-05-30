@@ -1,3 +1,4 @@
+// ─── DOM refs ────────────────────────────────────────────────────────────────
 const statusCli = document.querySelector('#cli-status');
 const statusCliDetail = document.querySelector('#cli-detail');
 const statusAi = document.querySelector('#ai-status');
@@ -50,16 +51,23 @@ const aiApiKey = document.querySelector('#ai-api-key');
 const testAiConfigButton = document.querySelector('#test-ai-config');
 const aiTestResult = document.querySelector('#ai-test-result');
 
+const gammaSearchInput = document.querySelector('#gamma-search-input');
+const gammaSearchButton = document.querySelector('#gamma-search-btn');
+const gammaResults = document.querySelector('#gamma-results');
+
+// ─── State ───────────────────────────────────────────────────────────────────
 const state = {
   presets: [],
   selectedPreset: null,
   liveTimer: null,
+  liveRefreshIntervalMs: 9000,
   isRefreshingLive: false,
   isRunningSetup: false,
   isRunningAction: false,
   isSubmittingTrade: false,
   isRunningResearch: false,
-  isTestingAi: false
+  isTestingAi: false,
+  isSearchingGamma: false
 };
 
 const PARAM_META = {
@@ -71,6 +79,108 @@ const PARAM_META = {
   size: { label: 'Size', placeholder: '10' }
 };
 
+// ─── Toast notifications ─────────────────────────────────────────────────────
+let toastTimer = null;
+
+function showToast(message, type = 'info') {
+  let toast = document.querySelector('#toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    document.body.appendChild(toast);
+  }
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = `toast toast-${type} toast-visible`;
+  toastTimer = setTimeout(() => {
+    toast.className = `toast toast-${type}`;
+  }, 3200);
+}
+
+// ─── Markdown renderer (no CDN dependency) ───────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) {
+    return '';
+  }
+  let html = escapeHtml(text);
+
+  // ## Headings
+  html = html.replace(/^## (.+)$/gm, '<h3 class="md-h2">$1</h3>');
+  // ### Headings
+  html = html.replace(/^### (.+)$/gm, '<h4 class="md-h3">$1</h4>');
+
+  // **bold**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // *italic* or _italic_
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Unordered list items (- item)
+  html = html.replace(/((?:^- .+\n?)+)/gm, (block) => {
+    const items = block
+      .trim()
+      .split('\n')
+      .map((line) => `<li>${line.replace(/^- /, '')}</li>`)
+      .join('');
+    return `<ul>${items}</ul>`;
+  });
+
+  // Numbered list items
+  html = html.replace(/((?:^\d+\. .+\n?)+)/gm, (block) => {
+    const items = block
+      .trim()
+      .split('\n')
+      .map((line) => `<li>${line.replace(/^\d+\. /, '')}</li>`)
+      .join('');
+    return `<ol>${items}</ol>`;
+  });
+
+  // Blank-line paragraph breaks (not inside list/heading)
+  html = html
+    .split(/\n{2,}/)
+    .map((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) {
+        return '';
+      }
+      if (/^<(h[34]|ul|ol|li)/.test(trimmed)) {
+        return trimmed;
+      }
+      return `<p>${trimmed.replace(/\n/g, '<br />')}</p>`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return html;
+}
+
+// ─── Clipboard ───────────────────────────────────────────────────────────────
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard', 'ok');
+  } catch {
+    showToast('Copy failed — select and copy manually', 'bad');
+  }
+}
+
+function makeCopyButton(value, title = 'Copy') {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'copy-btn';
+  btn.title = title;
+  btn.textContent = '⎘';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyToClipboard(value);
+  });
+  return btn;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function setStatus(target, isHealthy, text) {
   target.textContent = text;
   target.classList.remove('ok', 'bad');
@@ -92,7 +202,7 @@ function shortText(value, limit = 96) {
   if (text.length <= limit) {
     return text;
   }
-  return `${text.slice(0, limit - 1)}...`;
+  return `${text.slice(0, limit - 1)}…`;
 }
 
 function compactText(value) {
@@ -122,18 +232,15 @@ function humanizeErrorText(raw) {
         text = parsed.trim();
         continue;
       }
-
       if (parsed && typeof parsed === 'object') {
         if (typeof parsed.error === 'string') {
           text = parsed.error.trim();
           continue;
         }
-
         if (typeof parsed.message === 'string') {
           text = parsed.message.trim();
           continue;
         }
-
         text = toPretty(parsed);
       }
     } catch {
@@ -151,7 +258,7 @@ function humanizeErrorText(raw) {
         text = parsedEmbedded.error.trim();
       }
     } catch {
-      // keep original text if embedded JSON is not parseable
+      // keep original
     }
   }
 
@@ -220,7 +327,7 @@ function summarizeItems(payload, fieldMap) {
   });
 
   if (items.length > 12) {
-    lines.push(`... and ${items.length - 12} more`);
+    lines.push(`… and ${items.length - 12} more`);
   }
 
   return lines.join('\n');
@@ -233,9 +340,7 @@ function summarizeActionResult(presetId, payload) {
 
   if (presetId === 'walletAddress') {
     const address = pickValue(payload, ['address', 'wallet']);
-    return address
-      ? `Wallet connected: ${address}`
-      : 'Wallet check completed.';
+    return address ? `Wallet connected: ${address}` : 'Wallet check completed.';
   }
 
   if (presetId === 'listMarkets') {
@@ -281,7 +386,8 @@ function summarizeActionResult(presetId, payload) {
           { label: 'Order', keys: ['id', 'order_id'] },
           { label: 'Side', keys: ['side'] },
           { label: 'Price', keys: ['price'] },
-          { label: 'Size', keys: ['size', 'quantity'] }
+          { label: 'Size', keys: ['size', 'quantity'] },
+          { label: 'Status', keys: ['status'] }
         ])}`;
   }
 
@@ -334,17 +440,14 @@ function validateQuickTradeInput(params) {
   if (!/^\d+$/.test(params.tokenId)) {
     return 'Token ID must be numeric.';
   }
-
   const price = Number(params.price);
   if (!Number.isFinite(price) || price <= 0 || price >= 1) {
-    return 'Price must be a number between 0 and 1.';
+    return 'Price must be a number between 0 and 1 (e.g. 0.62).';
   }
-
   const size = Number(params.size);
   if (!Number.isFinite(size) || size <= 0) {
     return 'Size must be a positive number.';
   }
-
   return null;
 }
 
@@ -372,14 +475,12 @@ function getAiConfigFromForm() {
     model: aiModel.value.trim(),
     apiKey: aiApiKey.value.trim()
   };
-
   if (!config.baseUrl && config.provider === 'ollama') {
     config.baseUrl = 'http://localhost:11434';
   }
   if (!config.model && config.provider === 'ollama') {
     config.model = 'glm-5';
   }
-
   return config;
 }
 
@@ -392,6 +493,30 @@ async function getJson(url, options) {
   return payload;
 }
 
+// ─── Confirmation dialog ─────────────────────────────────────────────────────
+function confirm(message) {
+  return window.confirm(message);
+}
+
+// ─── Fill helpers (one-click "use this market") ──────────────────────────────
+function fillMarketId(id) {
+  liveMarketIdInput.value = id;
+  document.querySelector('#research-market-id').value = id;
+  setupMarketIdInput.value = id;
+  showToast(`Market ID filled: ${shortText(id, 40)}`, 'ok');
+  refreshLiveOverview().catch(() => {});
+}
+
+function fillTokenId(id) {
+  liveTokenIdInput.value = id;
+  document.querySelector('#research-token-id').value = id;
+  setupTokenIdInput.value = id;
+  quickTradeToken.value = id;
+  showToast(`Token ID filled: ${id}`, 'ok');
+  refreshLiveOverview().catch(() => {});
+}
+
+// ─── Status ──────────────────────────────────────────────────────────────────
 async function loadStatus() {
   try {
     const status = await getJson('/api/status');
@@ -402,11 +527,16 @@ async function loadStatus() {
     setStatus(statusAi, aiHealthy, aiHealthy ? 'Ready' : 'Needs Fix');
     statusAiDetail.textContent =
       status.ai.detail || `${status.ai.provider} · ${status.ai.baseUrl} · ${status.ai.model}`;
+
     if (!aiBaseUrl.value) {
       aiBaseUrl.value = status.ai.baseUrl || '';
     }
     if (!aiModel.value) {
       aiModel.value = status.ai.model || '';
+    }
+
+    if (status.config?.liveRefreshIntervalMs > 0) {
+      state.liveRefreshIntervalMs = status.config.liveRefreshIntervalMs;
     }
   } catch (error) {
     setStatus(statusCli, false, 'Offline');
@@ -416,6 +546,7 @@ async function loadStatus() {
   }
 }
 
+// ─── Setup wizard ─────────────────────────────────────────────────────────────
 function renderSetup(data) {
   const summary = data.summary;
   const toneClass = summary.overallReady ? 'ok' : 'bad';
@@ -425,14 +556,14 @@ function renderSetup(data) {
   setupSummary.className = `wizard-summary ${toneClass}`;
   setupSummary.innerHTML = `
     <h3>Summary</h3>
-    <p><strong>Trading Ready:</strong> ${summary.tradeReady ? 'Yes' : 'Not yet'}</p>
-    <p><strong>AI Ready:</strong> ${summary.aiReady ? 'Yes' : 'Not yet'}</p>
+    <p><strong>Trading Ready:</strong> ${summary.tradeReady ? '✓ Yes' : '✗ Not yet'}</p>
+    <p><strong>AI Ready:</strong> ${summary.aiReady ? '✓ Yes' : '✗ Not yet'}</p>
     <p><strong>Market Probe:</strong> ${marketProbeText}</p>
-    <p><strong>Overall:</strong> ${summary.overallReady ? 'Good to go' : 'Needs fixes'}</p>
+    <p><strong>Overall:</strong> ${summary.overallReady ? '✓ Good to go' : '✗ Needs fixes'}</p>
     ${
       summary.nextActions.length > 0
-        ? `<p><strong>How to fix:</strong><br />${summary.nextActions.map((item) => escapeHtml(item)).join('<br />')}</p>`
-        : '<p><strong>How to fix:</strong> No action needed.</p>'
+        ? `<p><strong>Next steps:</strong><br />${summary.nextActions.map((item) => `• ${escapeHtml(item)}`).join('<br />')}</p>`
+        : '<p><strong>Next steps:</strong> None — everything looks good.</p>'
     }
   `;
 
@@ -440,10 +571,11 @@ function renderSetup(data) {
   data.checks.forEach((check) => {
     const item = document.createElement('article');
     item.className = `wizard-check status-${check.status}`;
+    const icon = check.status === 'pass' ? '✓' : check.status === 'fail' ? '✗' : '–';
     item.innerHTML = `
       <header>
         <h4>${escapeHtml(check.title)}</h4>
-        <span class="check-state">${escapeHtml(check.status.toUpperCase())}</span>
+        <span class="check-state ${check.status === 'pass' ? 'ok' : check.status === 'fail' ? 'bad' : ''}">${icon} ${escapeHtml(check.status.toUpperCase())}</span>
       </header>
       <p>${escapeHtml(compactText(check.detail || '-'))}</p>
       ${check.fix ? `<small>Fix: ${escapeHtml(check.fix)}</small>` : ''}
@@ -457,9 +589,9 @@ async function runSetupWizard() {
     return;
   }
   state.isRunningSetup = true;
-  setButtonBusy(runSetupButton, true, 'Check My Setup', 'Checking...');
+  setButtonBusy(runSetupButton, true, 'Check My Setup', 'Checking…');
   setupSummary.className = 'wizard-summary';
-  setupSummary.textContent = 'Checking your setup...';
+  setupSummary.textContent = 'Running checks…';
   setupChecks.innerHTML = '';
 
   try {
@@ -483,10 +615,11 @@ async function runSetupWizard() {
     setupSummary.textContent = `Setup check failed: ${error.message}`;
   } finally {
     state.isRunningSetup = false;
-    setButtonBusy(runSetupButton, false, 'Check My Setup', 'Checking...');
+    setButtonBusy(runSetupButton, false, 'Check My Setup', 'Checking…');
   }
 }
 
+// ─── Live feed ────────────────────────────────────────────────────────────────
 function renderLiveOverview(data) {
   setStatus(liveHealth, data.health.ok, data.health.ok ? 'Healthy' : 'Degraded');
   liveMarketCount.textContent = String(data.marketList.count);
@@ -530,12 +663,12 @@ function renderLiveOverview(data) {
   if (data.orderbook) {
     orderbookLines.push(`Orderbook: ${compactText(toPretty(data.orderbook))}`);
   } else {
-    orderbookLines.push('Orderbook: Add a token id to load orderbook depth.');
+    orderbookLines.push('Orderbook: Add a token ID above to load orderbook depth.');
   }
   if (Array.isArray(data.health.errors) && data.health.errors.length > 0) {
     orderbookLines.push('Issues:');
     data.health.errors.forEach((err) => {
-      orderbookLines.push(`- ${compactText(err)}`);
+      orderbookLines.push(`• ${compactText(err)}`);
     });
   }
 
@@ -549,7 +682,7 @@ async function refreshLiveOverview(options = {}) {
   }
   state.isRefreshingLive = true;
   if (manual) {
-    setButtonBusy(runLiveButton, true, 'Refresh Now', 'Refreshing...');
+    setButtonBusy(runLiveButton, true, 'Refresh Now', 'Refreshing…');
   }
 
   try {
@@ -571,7 +704,7 @@ async function refreshLiveOverview(options = {}) {
   } finally {
     state.isRefreshingLive = false;
     if (manual) {
-      setButtonBusy(runLiveButton, false, 'Refresh Now', 'Refreshing...');
+      setButtonBusy(runLiveButton, false, 'Refresh Now', 'Refreshing…');
     }
   }
 }
@@ -581,16 +714,140 @@ function startLiveLoop() {
     clearInterval(state.liveTimer);
     state.liveTimer = null;
   }
-
   if (!liveAutoToggle.checked) {
     return;
   }
-
   state.liveTimer = setInterval(() => {
     refreshLiveOverview().catch(() => {});
-  }, 9000);
+  }, state.liveRefreshIntervalMs);
 }
 
+// ─── Gamma market search ──────────────────────────────────────────────────────
+function formatVolume(raw) {
+  const num = Number(raw);
+  if (!Number.isFinite(num)) {
+    return '—';
+  }
+  if (num >= 1_000_000) {
+    return `$${(num / 1_000_000).toFixed(1)}M`;
+  }
+  if (num >= 1_000) {
+    return `$${(num / 1_000).toFixed(0)}K`;
+  }
+  return `$${num.toFixed(0)}`;
+}
+
+function renderGammaResults(result) {
+  gammaResults.innerHTML = '';
+
+  if (!result.ok) {
+    gammaResults.innerHTML = `<p class="gamma-empty bad">Search failed: ${escapeHtml(result.error || 'Unknown error')}</p>`;
+    return;
+  }
+
+  if (result.markets.length === 0) {
+    gammaResults.innerHTML = '<p class="gamma-empty">No markets found. Try a different search term or browse trending markets.</p>';
+    return;
+  }
+
+  const countEl = document.createElement('p');
+  countEl.className = 'gamma-count';
+  countEl.textContent = `${result.count} market${result.count === 1 ? '' : 's'} found`;
+  gammaResults.appendChild(countEl);
+
+  result.markets.forEach((market) => {
+    const card = document.createElement('article');
+    card.className = 'gamma-card';
+
+    const question = escapeHtml(market.question || market.slug || 'Untitled market');
+    const vol24 = formatVolume(market.volume24hr || market.volume);
+    const statusLabel = market.closed ? 'Closed' : market.active === false ? 'Inactive' : 'Active';
+    const statusClass = market.closed ? 'bad' : market.active === false ? '' : 'ok';
+
+    // Token probability pills
+    let tokenHtml = '';
+    if (market.tokens && market.tokens.length > 0) {
+      const pills = market.tokens
+        .filter((t) => t.price != null)
+        .map((t) => {
+          const pct = (Number(t.price) * 100).toFixed(0);
+          const cls = t.outcome?.toLowerCase() === 'yes' ? 'pill-yes' : 'pill-no';
+          return `<span class="outcome-pill ${cls}">${escapeHtml(t.outcome || '?')} ${pct}%</span>`;
+        })
+        .join('');
+      if (pills) {
+        tokenHtml = `<div class="outcome-pills">${pills}</div>`;
+      }
+    }
+
+    card.innerHTML = `
+      <div class="gamma-card-head">
+        <p class="gamma-question">${question}</p>
+        <span class="gamma-status ${statusClass}">${statusLabel}</span>
+      </div>
+      ${tokenHtml}
+      <div class="gamma-meta">
+        <span>Vol 24h: <strong>${vol24}</strong></span>
+        ${market.id ? `<span class="gamma-id" title="${escapeHtml(market.id)}">ID: ${escapeHtml(shortText(market.id, 24))}</span>` : ''}
+      </div>
+      <div class="gamma-actions"></div>
+    `;
+
+    const actionsDiv = card.querySelector('.gamma-actions');
+
+    if (market.id) {
+      const useBtn = document.createElement('button');
+      useBtn.type = 'button';
+      useBtn.className = 'ghost-btn gamma-use-btn';
+      useBtn.textContent = '→ Use Market ID';
+      useBtn.addEventListener('click', () => fillMarketId(market.id));
+      actionsDiv.appendChild(useBtn);
+
+      const copyIdBtn = makeCopyButton(market.id, 'Copy market ID');
+      actionsDiv.appendChild(copyIdBtn);
+    }
+
+    if (market.tokens && market.tokens.length > 0) {
+      market.tokens.forEach((token) => {
+        if (!token.tokenId) {
+          return;
+        }
+        const useTokenBtn = document.createElement('button');
+        useTokenBtn.type = 'button';
+        useTokenBtn.className = 'ghost-btn gamma-use-btn';
+        useTokenBtn.textContent = `→ Use ${escapeHtml(token.outcome || 'Token')} ID`;
+        useTokenBtn.addEventListener('click', () => fillTokenId(token.tokenId));
+        actionsDiv.appendChild(useTokenBtn);
+      });
+    }
+
+    gammaResults.appendChild(card);
+  });
+}
+
+async function runGammaSearch() {
+  if (state.isSearchingGamma) {
+    return;
+  }
+  const q = gammaSearchInput.value.trim();
+  state.isSearchingGamma = true;
+  setButtonBusy(gammaSearchButton, true, 'Search', 'Searching…');
+  gammaResults.innerHTML = '<p class="gamma-empty">Searching Polymarket…</p>';
+
+  try {
+    const result = await getJson(
+      `/api/gamma/markets?q=${encodeURIComponent(q)}&limit=15&active=true&closed=false&order=volume24hr`
+    );
+    renderGammaResults(result);
+  } catch (error) {
+    gammaResults.innerHTML = `<p class="gamma-empty bad">Search error: ${escapeHtml(error.message)}</p>`;
+  } finally {
+    state.isSearchingGamma = false;
+    setButtonBusy(gammaSearchButton, false, 'Search', 'Searching…');
+  }
+}
+
+// ─── Presets / action panel ───────────────────────────────────────────────────
 function buildParamInputs(preset) {
   paramFields.innerHTML = '';
   const params = preset?.requiredParams || [];
@@ -604,6 +861,9 @@ function buildParamInputs(preset) {
 
   params.forEach((paramName) => {
     const meta = PARAM_META[paramName] || {};
+    const wrapper = document.createElement('div');
+    wrapper.className = 'field-with-copy';
+
     const label = document.createElement('label');
     label.className = 'field';
 
@@ -615,9 +875,11 @@ function buildParamInputs(preset) {
     input.name = paramName;
     input.placeholder = meta.placeholder || `Enter ${paramName}`;
     input.required = true;
+    input.autocomplete = 'off';
 
     label.append(title, input);
-    paramFields.append(label);
+    wrapper.append(label);
+    paramFields.append(wrapper);
   });
 }
 
@@ -643,35 +905,35 @@ async function loadPresets() {
   populatePresetSelect();
 }
 
+// ─── AI test ─────────────────────────────────────────────────────────────────
 async function testAiConfig() {
   if (state.isTestingAi) {
     return;
   }
   state.isTestingAi = true;
-  setButtonBusy(testAiConfigButton, true, 'Test AI Connection', 'Testing...');
-  aiTestResult.textContent = 'Testing AI connection...';
+  setButtonBusy(testAiConfigButton, true, 'Test AI Connection', 'Testing…');
+  aiTestResult.textContent = 'Testing AI connection…';
   try {
     const result = await getJson('/api/ai/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        aiConfig: getAiConfigFromForm()
-      })
+      body: JSON.stringify({ aiConfig: getAiConfigFromForm() })
     });
     const ok = result.reachable && result.hasConfiguredModel;
     aiTestResult.textContent = ok
-      ? `Connected: ${result.provider} / ${result.model}`
-      : `Connected but model not ready: ${result.model}`;
+      ? `✓ Connected: ${result.provider} / ${result.model}`
+      : `⚠ Connected but model not ready: ${result.model}`;
     aiTestResult.className = `panel-note ${ok ? 'ok' : 'bad'}`;
   } catch (error) {
-    aiTestResult.textContent = `AI test failed: ${error.message}`;
+    aiTestResult.textContent = `✗ AI test failed: ${error.message}`;
     aiTestResult.className = 'panel-note bad';
   } finally {
     state.isTestingAi = false;
-    setButtonBusy(testAiConfigButton, false, 'Test AI Connection', 'Testing...');
+    setButtonBusy(testAiConfigButton, false, 'Test AI Connection', 'Testing…');
   }
 }
 
+// ─── Event listeners ──────────────────────────────────────────────────────────
 presetSelect.addEventListener('change', () => {
   state.selectedPreset = state.presets.find((item) => item.id === presetSelect.value) ?? null;
   buildParamInputs(state.selectedPreset);
@@ -682,8 +944,6 @@ commandForm.addEventListener('submit', async (event) => {
   if (!state.selectedPreset || state.isRunningAction) {
     return;
   }
-  state.isRunningAction = true;
-  setButtonBusy(runCommandButton, true, 'Run Action', 'Running...');
 
   const formData = new FormData(commandForm);
   const params = {};
@@ -691,16 +951,28 @@ commandForm.addEventListener('submit', async (event) => {
     params[key] = String(value).trim();
   }
 
-  cliOutput.textContent = 'Running action...';
+  // Confirm before destructive execution actions
+  const executionPresets = ['placeBuyOrder', 'placeSellOrder', 'cancelOrder'];
+  if (executionPresets.includes(state.selectedPreset.id)) {
+    const side = state.selectedPreset.id.includes('Buy') ? 'BUY' : state.selectedPreset.id.includes('Sell') ? 'SELL' : 'CANCEL';
+    const confirmMsg = state.selectedPreset.id === 'cancelOrder'
+      ? `Cancel order ${params.orderId || '(unknown)'}?`
+      : `Submit ${side} order?\n\nToken: ${params.tokenId}\nPrice: ${params.price}\nSize: ${params.size}`;
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+  }
+
+  state.isRunningAction = true;
+  setButtonBusy(runCommandButton, true, 'Run Action', 'Running…');
+
+  cliOutput.textContent = 'Running action…';
   cliOutputRaw.textContent = '';
   try {
     const result = await getJson('/api/cli/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        presetId: state.selectedPreset.id,
-        params
-      })
+      body: JSON.stringify({ presetId: state.selectedPreset.id, params })
     });
 
     lastCommand.textContent = result.command.join(' ');
@@ -721,12 +993,14 @@ commandForm.addEventListener('submit', async (event) => {
       ? toPretty(result.parsed)
       : result.stdout || '(no output)';
     refreshLiveOverview().catch(() => {});
+    showToast('Action completed successfully', 'ok');
   } catch (error) {
     cliOutput.textContent = `Error: ${error.message}`;
     cliOutputRaw.textContent = '';
+    showToast(`Action failed: ${error.message}`, 'bad');
   } finally {
     state.isRunningAction = false;
-    setButtonBusy(runCommandButton, false, 'Run Action', 'Running...');
+    setButtonBusy(runCommandButton, false, 'Run Action', 'Running…');
   }
 });
 
@@ -749,9 +1023,15 @@ quickTradeForm.addEventListener('submit', async (event) => {
     return;
   }
 
+  const sideLabel = side.toUpperCase();
+  const confirmMsg = `Submit ${sideLabel} order?\n\nToken: ${params.tokenId}\nPrice: ${params.price}\nSize: ${params.size}\n\nThis will place a real order.`;
+  if (!confirm(confirmMsg)) {
+    return;
+  }
+
   state.isSubmittingTrade = true;
-  setButtonBusy(quickTradeSubmitButton, true, 'Submit Trade', 'Submitting...');
-  quickTradeOutput.textContent = 'Submitting trade...';
+  setButtonBusy(quickTradeSubmitButton, true, 'Submit Trade', 'Submitting…');
+  quickTradeOutput.textContent = 'Submitting trade…';
   try {
     const result = await getJson('/api/cli/run', {
       method: 'POST',
@@ -761,19 +1041,19 @@ quickTradeForm.addEventListener('submit', async (event) => {
 
     if (!result.success) {
       quickTradeOutput.textContent = formatActionFailure(result);
+      showToast('Trade failed', 'bad');
       return;
     }
 
-    quickTradeOutput.textContent = summarizeActionResult(
-      presetId,
-      result.parsed ?? result.stdout
-    );
+    quickTradeOutput.textContent = summarizeActionResult(presetId, result.parsed ?? result.stdout);
     refreshLiveOverview().catch(() => {});
+    showToast(`${sideLabel} order submitted`, 'ok');
   } catch (error) {
     quickTradeOutput.textContent = `Trade failed: ${error.message}`;
+    showToast(`Trade failed: ${error.message}`, 'bad');
   } finally {
     state.isSubmittingTrade = false;
-    setButtonBusy(quickTradeSubmitButton, false, 'Submit Trade', 'Submitting...');
+    setButtonBusy(quickTradeSubmitButton, false, 'Submit Trade', 'Submitting…');
   }
 });
 
@@ -790,8 +1070,9 @@ researchForm.addEventListener('submit', async (event) => {
   const riskTolerance = document.querySelector('#research-risk').value;
 
   state.isRunningResearch = true;
-  setButtonBusy(runResearchButton, true, 'Get Research', 'Researching...');
-  researchOutput.textContent = 'Building research view...';
+  setButtonBusy(runResearchButton, true, 'Get Research', 'Researching…');
+  researchOutput.innerHTML = '<p class="md-loading">Building research view…</p>';
+  researchOutput.className = 'analysis md-output';
   researchContext.textContent = '';
 
   try {
@@ -808,21 +1089,26 @@ researchForm.addEventListener('submit', async (event) => {
       })
     });
 
-    researchOutput.textContent = result.analysis;
+    researchOutput.innerHTML = renderMarkdown(result.analysis);
+    researchOutput.className = 'analysis md-output';
     researchContext.textContent = toPretty(result.context);
+    showToast('Research complete', 'ok');
   } catch (error) {
     researchOutput.textContent = `Research failed: ${error.message}`;
+    researchOutput.className = 'analysis';
+    showToast(`Research failed: ${error.message}`, 'bad');
   } finally {
     state.isRunningResearch = false;
-    setButtonBusy(runResearchButton, false, 'Get Research', 'Researching...');
+    setButtonBusy(runResearchButton, false, 'Get Research', 'Researching…');
   }
 });
 
 refreshPresetsButton.addEventListener('click', async () => {
-  cliOutput.textContent = 'Refreshing actions...';
+  cliOutput.textContent = 'Refreshing actions…';
   try {
     await loadPresets();
     cliOutput.textContent = 'Action list refreshed.';
+    showToast('Preset list refreshed', 'ok');
   } catch (error) {
     cliOutput.textContent = `Could not refresh list: ${error.message}`;
   }
@@ -852,8 +1138,22 @@ testAiConfigButton.addEventListener('click', () => {
   testAiConfig().catch(() => {});
 });
 
+gammaSearchButton.addEventListener('click', () => {
+  runGammaSearch().catch(() => {});
+});
+
+gammaSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    runGammaSearch().catch(() => {});
+  }
+});
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
 async function bootstrap() {
   await Promise.all([loadStatus(), loadPresets()]);
+  // Load trending markets on startup so the search panel has content immediately
+  runGammaSearch().catch(() => {});
   await runSetupWizard();
   await refreshLiveOverview();
   startLiveLoop();

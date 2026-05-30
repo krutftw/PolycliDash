@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PloyCLIDash</title>
+    <title>PolyCLIDash</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,16 +16,18 @@
     <div class="rain-layer" aria-hidden="true"></div>
 
     <main class="shell">
+      <!-- ── Hero / status ───────────────────────────────────────────── -->
       <header class="hero card">
         <div>
-          <p class="eyebrow">PloyCLIDash</p>
+          <p class="eyebrow">PolyCLIDash</p>
           <h1>Live Trading + AI Research in One Place</h1>
           <p class="subhead">
-            This dashboard connects directly to your Polymarket CLI so you can
-            watch live data, place actions, and ask AI for market research.
+            Connects directly to your Polymarket CLI — watch live data, place
+            orders, search markets, and get AI research without ever copying IDs
+            by hand.
           </p>
           <p class="subhead">
-            Community Discord:
+            Community:
             <a href="https://discord.gg/RSDX3PbCyD" target="_blank" rel="noreferrer"
               >discord.gg/RSDX3PbCyD</a
             >
@@ -34,35 +36,64 @@
         <div class="status-grid">
           <article class="status-tile">
             <p>CLI Connection</p>
-            <strong id="cli-status">Checking...</strong>
+            <strong id="cli-status">Checking…</strong>
             <small id="cli-detail">-</small>
           </article>
           <article class="status-tile">
             <p>Default AI (GLM-5)</p>
-            <strong id="ai-status">Checking...</strong>
+            <strong id="ai-status">Checking…</strong>
             <small id="ai-detail">-</small>
           </article>
         </div>
       </header>
 
-      <nav class="quick-nav card">
-        <a class="quick-link" href="#setup">Setup</a>
-        <a class="quick-link" href="#live">Live Feed</a>
-        <a class="quick-link" href="#quick-trade">Quick Trade</a>
-        <a class="quick-link" href="#actions">Actions</a>
-        <a class="quick-link" href="#research">AI Research</a>
+      <!-- ── Quick nav ──────────────────────────────────────────────── -->
+      <nav class="quick-nav card" aria-label="Jump to section">
+        <a class="quick-link" href="#search">🔍 Market Search</a>
+        <a class="quick-link" href="#setup">⚙ Setup</a>
+        <a class="quick-link" href="#live">📡 Live Feed</a>
+        <a class="quick-link" href="#quick-trade">⚡ Quick Trade</a>
+        <a class="quick-link" href="#actions">🛠 Actions</a>
+        <a class="quick-link" href="#research">🤖 AI Research</a>
       </nav>
 
+      <!-- ── Market Search (Gamma API) ──────────────────────────────── -->
+      <section id="search" class="card panel search-panel">
+        <div class="panel-head">
+          <h2>🔍 Market Search</h2>
+          <span class="pill">Polymarket Gamma API</span>
+        </div>
+        <p class="panel-note">
+          Search live markets directly — no CLI needed. Click
+          <strong>→ Use Market ID</strong> or <strong>→ Use Token ID</strong> to
+          fill IDs into every panel below automatically.
+        </p>
+        <div class="search-row">
+          <input
+            id="gamma-search-input"
+            type="search"
+            placeholder="Search by keyword — e.g. "Bitcoin", "election", "Fed rate" (or leave blank for trending)"
+            autocomplete="off"
+            class="search-input"
+          />
+          <button id="gamma-search-btn" class="primary-btn" type="button">Search</button>
+        </div>
+        <div id="gamma-results" class="gamma-results">
+          <p class="gamma-empty">Loading trending markets…</p>
+        </div>
+      </section>
+
+      <!-- ── Setup wizard ───────────────────────────────────────────── -->
       <section id="setup" class="card panel setup-panel">
         <div class="panel-head">
-          <h2>Quick Setup Check</h2>
+          <h2>⚙ Quick Setup Check</h2>
           <button id="run-setup" class="primary-btn" type="button">
             Check My Setup
           </button>
         </div>
         <p class="panel-note">
-          New users can run this first to confirm account access, order actions,
-          and AI connection.
+          New users: run this first to confirm CLI access, account auth, order
+          execution presets, and AI connection.
         </p>
         <div class="param-grid">
           <label class="field">
@@ -89,9 +120,10 @@
         <div id="setup-checks" class="wizard-grid"></div>
       </section>
 
+      <!-- ── Live feed ──────────────────────────────────────────────── -->
       <section id="live" class="card panel live-panel">
         <div class="panel-head">
-          <h2>Live Matrix Feed</h2>
+          <h2>📡 Live Matrix Feed</h2>
           <div class="inline-actions">
             <button id="run-live" class="ghost-btn" type="button">Refresh Now</button>
             <label class="toggle">
@@ -101,7 +133,8 @@
           </div>
         </div>
         <p class="panel-note">
-          Pulls fresh data from Polymarket CLI on a timer. No mock values.
+          Pulls live data from your Polymarket CLI on a timer. Tip: use Market
+          Search above to fill IDs without typing them.
         </p>
         <div class="param-grid">
           <label class="field">
@@ -109,7 +142,7 @@
             <input
               id="live-market-id"
               type="text"
-              placeholder="Use for live orderbook + market details"
+              placeholder="Fills automatically from Market Search →"
               autocomplete="off"
             />
           </label>
@@ -118,7 +151,7 @@
             <input
               id="live-token-id"
               type="text"
-              placeholder="Use for live orderbook by token"
+              placeholder="Fills automatically from Market Search →"
               autocomplete="off"
               inputmode="numeric"
             />
@@ -151,13 +184,15 @@
         </div>
       </section>
 
+      <!-- ── Quick trade ────────────────────────────────────────────── -->
       <section id="quick-trade" class="card panel trade-panel">
         <div class="panel-head">
-          <h2>Quick Trade</h2>
+          <h2>⚡ Quick Trade</h2>
+          <span class="pill warn-pill">Confirmation required</span>
         </div>
         <p class="panel-note">
-          Fast buy/sell flow for traders. Fill token, price, and size, then
-          click submit.
+          Fast buy/sell flow. Token ID fills automatically from Market Search.
+          A confirmation dialog will appear before any order is placed.
         </p>
         <form id="quick-trade-form" class="stack">
           <div class="param-grid">
@@ -166,7 +201,7 @@
               <input
                 id="quick-trade-token"
                 type="text"
-                placeholder="numeric token id"
+                placeholder="Fills from Market Search →"
                 required
                 autocomplete="off"
                 inputmode="numeric"
@@ -182,7 +217,7 @@
           </div>
           <div class="param-grid">
             <label class="field">
-              <span>Price</span>
+              <span>Price (0 – 1)</span>
               <input
                 id="quick-trade-price"
                 type="number"
@@ -214,17 +249,20 @@
         <article id="quick-trade-output" class="analysis action-output"></article>
       </section>
 
+      <!-- ── Actions + Research ─────────────────────────────────────── -->
       <section class="content-grid">
+
+        <!-- Actions -->
         <article id="actions" class="card panel">
           <div class="panel-head">
-            <h2>Action Buttons</h2>
+            <h2>🛠 Action Buttons</h2>
             <button id="refresh-presets" class="ghost-btn" type="button">
               Refresh List
             </button>
           </div>
           <p class="panel-note">
-            Choose an action and run it. This is a click-friendly wrapper for
-            your Polymarket CLI presets.
+            Click-friendly wrapper for your CLI presets. Execution actions
+            (buy / sell / cancel) ask for confirmation first.
           </p>
 
           <form id="command-form" class="stack">
@@ -251,14 +289,16 @@
           </details>
         </article>
 
+        <!-- AI Research -->
         <article id="research" class="card panel">
           <div class="panel-head">
-            <h2>AI Research Assistant</h2>
+            <h2>🤖 AI Research Assistant</h2>
             <span class="pill">Default: GLM-5</span>
           </div>
           <p class="panel-note">
-            Ask for a clear trade view. You can keep default GLM-5 or use a
-            custom provider/model with API key.
+            Market ID fills automatically from Market Search. The AI receives
+            live market data, orderbook depth, and your open positions — then
+            returns a structured trade analysis in markdown.
           </p>
 
           <form id="research-form" class="stack">
@@ -267,17 +307,17 @@
               <input
                 id="research-market-id"
                 type="text"
-                placeholder="e.g. 0xabc..."
+                placeholder="Fills from Market Search →"
                 required
                 autocomplete="off"
               />
             </label>
             <label class="field">
-              <span>Token ID (optional for orderbook depth)</span>
+              <span>Token ID (optional — for orderbook depth)</span>
               <input
                 id="research-token-id"
                 type="text"
-                placeholder="numeric token id"
+                placeholder="Fills from Market Search →"
                 autocomplete="off"
                 inputmode="numeric"
               />
@@ -287,7 +327,7 @@
               <span>Your Question</span>
               <textarea
                 id="research-question"
-                rows="4"
+                rows="3"
                 placeholder="Example: Which side is stronger and where does this trade fail?"
                 required
               ></textarea>
@@ -298,7 +338,7 @@
                 <span>Time Horizon</span>
                 <select id="research-horizon">
                   <option value="intraday">Today</option>
-                  <option value="swing" selected>1-7 days</option>
+                  <option value="swing" selected>1–7 days</option>
                   <option value="event">Until market resolves</option>
                 </select>
               </label>
@@ -338,8 +378,8 @@
                   </label>
                 </div>
                 <label class="field">
-                  <span>API Key (only for OpenAI-compatible)</span>
-                  <input id="ai-api-key" type="password" placeholder="sk-..." />
+                  <span>API Key (OpenAI-compatible only)</span>
+                  <input id="ai-api-key" type="password" placeholder="sk-…" autocomplete="off" />
                 </label>
                 <button id="test-ai-config" class="ghost-btn" type="button">
                   Test AI Connection
@@ -354,12 +394,13 @@
           </form>
 
           <h3>AI Output</h3>
-          <article id="research-output" class="analysis"></article>
+          <article id="research-output" class="analysis md-output"></article>
           <details>
             <summary>Market Context Sent to AI</summary>
             <pre id="research-context" class="console"></pre>
           </details>
         </article>
+
       </section>
     </main>
 

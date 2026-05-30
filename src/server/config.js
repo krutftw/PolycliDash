@@ -30,6 +30,7 @@ export const appConfig = {
     (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, ''),
   ollamaModel: process.env.OLLAMA_MODEL || 'glm-5',
   commandTimeoutMs: parseNumber(process.env.CLI_COMMAND_TIMEOUT_MS, 25_000),
+  liveRefreshIntervalMs: parseNumber(process.env.LIVE_REFRESH_INTERVAL_MS, 9_000),
   presetsPath: getPresetsPath()
 };
 
