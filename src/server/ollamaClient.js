@@ -20,7 +20,16 @@ async function fetchJson(url, options = {}) {
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Ollama returned non-JSON response (${response.status}): ${text.slice(0, 200)}`
+        );
+      }
+    }
 
     if (!response.ok) {
       throw new Error(

@@ -10,7 +10,16 @@ async function fetchJson(url) {
       headers: { Accept: 'application/json' }
     });
     const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Gamma API returned non-JSON response (${response.status}): ${text.slice(0, 200)}`
+        );
+      }
+    }
 
     if (!response.ok) {
       throw new Error(
