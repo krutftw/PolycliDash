@@ -1,3 +1,19 @@
+// ─── Polymarket direct-API imports (used when local server is unavailable) ───
+import {
+  searchGammaMarkets,
+  buildResearchMessages,
+  callAiDirect,
+  testAiDirect,
+  deriveApiCreds,
+  clobGet,
+  clobGetAuth,
+  clobPost,
+  clobDelete,
+  fetchLiveOverview,
+  placeOrder,
+  getEthers,
+} from './polymarket-clob.js';
+
 // ─── DOM refs ────────────────────────────────────────────────────────────────
 const statusCli = document.querySelector('#cli-status');
 const statusCliDetail = document.querySelector('#cli-detail');
@@ -58,6 +74,14 @@ const gammaSearchInput = document.querySelector('#gamma-search-input');
 const gammaSearchButton = document.querySelector('#gamma-search-btn');
 const gammaResults = document.querySelector('#gamma-results');
 
+// ─── Credentials DOM refs ─────────────────────────────────────────────────────
+const credsPrivateKey = document.querySelector('#creds-private-key');
+const credsFunder = document.querySelector('#creds-funder');
+const credsConnectBtn = document.querySelector('#creds-connect-btn');
+const credsDisconnectBtn = document.querySelector('#creds-disconnect-btn');
+const credsStatusBadge = document.querySelector('#creds-status');
+const credsAddressLine = document.querySelector('#creds-address-line');
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const state = {
   presets: [],
@@ -71,8 +95,27 @@ const state = {
   isRunningResearch: false,
   isTestingAi: false,
   isSearchingGamma: false,
-  isCancellingOrder: false
+  isCancellingOrder: false,
+  // Direct-API mode (set during bootstrap when local server is not reachable)
+  serverAvailable: false,
+  // Ethers.js Wallet instance (null until user connects credentials)
+  clobWallet: null,
+  // Polymarket API creds { apiKey, secret, passphrase } (null until derived)
+  clobCreds: null,
 };
+
+// ─── CLOB presets (used in direct-API mode instead of server presets) ─────────
+const CLOB_PRESETS = [
+  { id: 'listMarkets',   label: 'List Markets',   category: 'read',  description: 'Fetch 10 active markets from CLOB API',          requiredParams: [] },
+  { id: 'walletAddress', label: 'Wallet Address',  category: 'read',  description: 'Show your connected wallet address',             requiredParams: [] },
+  { id: 'openPositions', label: 'Open Positions',  category: 'read',  description: 'Your open positions (requires wallet)',          requiredParams: [] },
+  { id: 'openOrders',    label: 'Open Orders',     category: 'read',  description: 'Your live open orders (requires wallet)',        requiredParams: [] },
+  { id: 'marketDetail',  label: 'Market Detail',   category: 'read',  description: 'Fetch detail for a specific market',            requiredParams: ['marketId'] },
+  { id: 'orderBook',     label: 'Order Book',      category: 'read',  description: 'Orderbook depth for a token',                   requiredParams: ['tokenId'] },
+  { id: 'placeBuyOrder', label: 'Place Buy Order', category: 'trade', description: 'Sign and submit a GTC buy order (requires wallet)', requiredParams: ['tokenId', 'price', 'size'] },
+  { id: 'placeSellOrder',label: 'Place Sell Order',category: 'trade', description: 'Sign and submit a GTC sell order (requires wallet)', requiredParams: ['tokenId', 'price', 'size'] },
+  { id: 'cancelOrder',   label: 'Cancel Order',    category: 'trade', description: 'Cancel an open order by ID (requires wallet)',  requiredParams: ['orderId'] },
+];
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 const STORAGE_KEYS = {
@@ -662,6 +705,15 @@ function renderResearchHistory() {
 
 // ─── Status ──────────────────────────────────────────────────────────────────
 async function loadStatus() {
+  if (!state.serverAvailable) {
+    // Direct-API mode: show mode info instead of CLI status
+    setStatus(statusCli, true, 'Direct API');
+    statusCliDetail.textContent = 'clob.polymarket.com · no local server needed';
+    // AI status will be blank until user tests their config
+    setStatus(statusAi, false, 'Not tested');
+    statusAiDetail.textContent = 'Configure AI in the Research panel and click Test';
+    return;
+  }
   try {
     const status = await getJson('/api/status');
     setStatus(statusCli, status.cli.available, status.cli.available ? 'Online' : 'Offline');
@@ -739,21 +791,94 @@ async function runSetupWizard() {
   setupChecks.innerHTML = '';
 
   try {
-    const marketId = setupMarketIdInput.value.trim();
-    const tokenId = setupTokenIdInput.value.trim();
-    const payload = {};
-    if (marketId) {
-      payload.marketId = marketId;
+    if (state.serverAvailable) {
+      const marketId = setupMarketIdInput.value.trim();
+      const tokenId = setupTokenIdInput.value.trim();
+      const payload = {};
+      if (marketId) {
+        payload.marketId = marketId;
+      }
+      if (tokenId) {
+        payload.tokenId = tokenId;
+      }
+      const result = await getJson('/api/setup/wizard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      renderSetup(result);
+    } else {
+      // Direct-API mode: build a lightweight setup check using CLOB API
+      const checks = [];
+      const errors = [];
+
+      // 1. CLOB API reachable
+      try {
+        await clobGet('/time');
+        checks.push({ title: 'CLOB API', status: 'pass', detail: 'clob.polymarket.com reachable' });
+      } catch (e) {
+        checks.push({ title: 'CLOB API', status: 'fail', detail: e.message, fix: 'Check your network connection' });
+        errors.push('clob');
+      }
+
+      // 2. Gamma API reachable
+      try {
+        await searchGammaMarkets({ limit: 1 });
+        checks.push({ title: 'Gamma API', status: 'pass', detail: 'gamma-api.polymarket.com reachable' });
+      } catch (e) {
+        checks.push({ title: 'Gamma API', status: 'fail', detail: e.message, fix: 'Check your network connection' });
+        errors.push('gamma');
+      }
+
+      // 3. Wallet connected
+      if (state.clobWallet) {
+        const addr = await state.clobWallet.getAddress();
+        checks.push({ title: 'Wallet', status: 'pass', detail: `Connected: ${addr}` });
+      } else {
+        checks.push({ title: 'Wallet', status: 'skip', detail: 'No wallet connected — use the Account panel to connect', fix: 'Enter your private key in the 🔑 Account panel above' });
+      }
+
+      // 4. API credentials
+      if (state.clobCreds) {
+        checks.push({ title: 'API Credentials', status: 'pass', detail: 'Polymarket API key derived successfully' });
+      } else if (state.clobWallet) {
+        checks.push({ title: 'API Credentials', status: 'skip', detail: 'Credentials not derived — click Connect Account', fix: 'Click "Connect Account" in the 🔑 Account panel' });
+      } else {
+        checks.push({ title: 'API Credentials', status: 'skip', detail: 'Connect wallet first' });
+      }
+
+      // 5. Optional market probe
+      const marketId = setupMarketIdInput.value.trim();
+      if (marketId) {
+        try {
+          const market = await clobGet(`/markets/${marketId}`);
+          const q = market?.question || market?.slug || marketId;
+          checks.push({ title: 'Market Probe', status: 'pass', detail: shortText(q, 80) });
+        } catch (e) {
+          checks.push({ title: 'Market Probe', status: 'fail', detail: e.message });
+          errors.push('market');
+        }
+      }
+
+      const tradeReady = state.clobWallet && state.clobCreds && !errors.includes('clob');
+      const aiReady = false; // user must test AI themselves
+      const overallReady = tradeReady && errors.length === 0;
+      const nextActions = [];
+      if (!state.clobWallet) nextActions.push('Enter private key in the 🔑 Account panel and click Connect Account');
+      if (state.clobWallet && !state.clobCreds) nextActions.push('Click Connect Account to derive Polymarket API credentials');
+      if (!aiReady) nextActions.push('Configure an AI model in the Research panel and click Test AI Connection');
+
+      renderSetup({
+        summary: {
+          tradeReady,
+          aiReady,
+          marketProbeReady: marketId ? !errors.includes('market') : null,
+          overallReady,
+          nextActions
+        },
+        checks
+      });
     }
-    if (tokenId) {
-      payload.tokenId = tokenId;
-    }
-    const result = await getJson('/api/setup/wizard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    renderSetup(result);
   } catch (error) {
     setupSummary.className = 'wizard-summary bad';
     setupSummary.textContent = `Setup check failed: ${error.message}`;
@@ -832,15 +957,26 @@ async function refreshLiveOverview(options = {}) {
   try {
     const marketId = liveMarketIdInput.value.trim();
     const tokenId = liveTokenIdInput.value.trim();
-    const parts = [];
-    if (marketId) {
-      parts.push(`marketId=${encodeURIComponent(marketId)}`);
+
+    let result;
+    if (state.serverAvailable) {
+      const parts = [];
+      if (marketId) {
+        parts.push(`marketId=${encodeURIComponent(marketId)}`);
+      }
+      if (tokenId) {
+        parts.push(`tokenId=${encodeURIComponent(tokenId)}`);
+      }
+      const query = parts.length > 0 ? `?${parts.join('&')}` : '';
+      result = await getJson(`/api/live/overview${query}`);
+    } else {
+      result = await fetchLiveOverview({
+        marketId: marketId || undefined,
+        tokenId: tokenId || undefined,
+        wallet: state.clobWallet,
+        creds: state.clobCreds,
+      });
     }
-    if (tokenId) {
-      parts.push(`tokenId=${encodeURIComponent(tokenId)}`);
-    }
-    const query = parts.length > 0 ? `?${parts.join('&')}` : '';
-    const result = await getJson(`/api/live/overview${query}`);
     renderLiveOverview(result);
   } catch (error) {
     setStatus(liveHealth, false, 'Error');
@@ -979,9 +1115,14 @@ async function runGammaSearch() {
   gammaResults.innerHTML = '<p class="gamma-empty">Searching Polymarket…</p>';
 
   try {
-    const result = await getJson(
-      `/api/gamma/markets?q=${encodeURIComponent(q)}&limit=15&active=true&closed=false&order=volume24hr`
-    );
+    let result;
+    if (state.serverAvailable) {
+      result = await getJson(
+        `/api/gamma/markets?q=${encodeURIComponent(q)}&limit=15&active=true&closed=false&order=volume24hr`
+      );
+    } else {
+      result = await searchGammaMarkets({ q, limit: 15, active: true, closed: false });
+    }
     renderGammaResults(result);
   } catch (error) {
     gammaResults.innerHTML = `<p class="gamma-empty bad">Search error: ${escapeHtml(error.message)}</p>`;
@@ -1045,8 +1186,12 @@ function populatePresetSelect() {
 }
 
 async function loadPresets() {
-  const { presets } = await getJson('/api/cli/presets');
-  state.presets = presets;
+  if (state.serverAvailable) {
+    const { presets } = await getJson('/api/cli/presets');
+    state.presets = presets;
+  } else {
+    state.presets = CLOB_PRESETS;
+  }
   populatePresetSelect();
 }
 
@@ -1059,22 +1204,110 @@ async function testAiConfig() {
   setButtonBusy(testAiConfigButton, true, 'Test AI Connection', 'Testing…');
   aiTestResult.textContent = 'Testing AI connection…';
   try {
-    const result = await getJson('/api/ai/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aiConfig: getAiConfigFromForm() })
-    });
+    let result;
+    if (state.serverAvailable) {
+      result = await getJson('/api/ai/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiConfig: getAiConfigFromForm() })
+      });
+    } else {
+      result = await testAiDirect(getAiConfigFromForm());
+    }
     const ok = result.reachable && result.hasConfiguredModel;
     aiTestResult.textContent = ok
       ? `✓ Connected: ${result.provider} / ${result.model}`
       : `⚠ Connected but model not ready: ${result.model}`;
     aiTestResult.className = `panel-note ${ok ? 'ok' : 'bad'}`;
+    if (ok) {
+      setStatus(statusAi, true, 'Ready');
+      statusAiDetail.textContent = `${result.provider} · ${result.model}`;
+    }
   } catch (error) {
     aiTestResult.textContent = `✗ AI test failed: ${error.message}`;
     aiTestResult.className = 'panel-note bad';
   } finally {
     state.isTestingAi = false;
     setButtonBusy(testAiConfigButton, false, 'Test AI Connection', 'Testing…');
+  }
+}
+
+// ─── CLOB preset executor (direct-API mode) ───────────────────────────────────
+async function runClobPreset(presetId, params) {
+  const cmd = ['clob', presetId];
+
+  switch (presetId) {
+    case 'listMarkets': {
+      const raw = await clobGet('/markets?limit=10');
+      const data = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      return { success: true, command: cmd, parsed: data };
+    }
+
+    case 'walletAddress': {
+      if (!state.clobWallet) throw new Error('No wallet connected — use the 🔑 Account panel');
+      const address = await state.clobWallet.getAddress();
+      return { success: true, command: cmd, parsed: { address } };
+    }
+
+    case 'openPositions': {
+      if (!state.clobWallet) throw new Error('Wallet not connected — use the 🔑 Account panel');
+      const address = await state.clobWallet.getAddress();
+      const res = await fetch(
+        `https://data-api.polymarket.com/positions?user_address=${address}&sizeThreshold=.01`
+      );
+      if (!res.ok) throw new Error(`Positions API (${res.status})`);
+      const data = await res.json();
+      return { success: true, command: cmd, parsed: Array.isArray(data) ? data : [] };
+    }
+
+    case 'openOrders': {
+      if (!state.clobWallet) throw new Error('Wallet not connected — use the 🔑 Account panel');
+      if (!state.clobCreds) throw new Error('API credentials not derived — click Connect Account');
+      const address = await state.clobWallet.getAddress();
+      const raw = await clobGetAuth(
+        state.clobWallet,
+        state.clobCreds,
+        `/data/orders?maker_address=${address}&status=live`
+      );
+      const data = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      return { success: true, command: cmd, parsed: data };
+    }
+
+    case 'marketDetail': {
+      const market = await clobGet(`/markets/${params.marketId}`);
+      return { success: true, command: cmd, parsed: market };
+    }
+
+    case 'orderBook': {
+      const book = await clobGet(`/book?token_id=${params.tokenId}`);
+      return { success: true, command: cmd, parsed: book };
+    }
+
+    case 'placeBuyOrder':
+    case 'placeSellOrder': {
+      if (!state.clobWallet) throw new Error('Wallet not connected — use the 🔑 Account panel');
+      if (!state.clobCreds) throw new Error('API credentials not derived — click Connect Account');
+      const side = presetId === 'placeBuyOrder' ? 0 : 1;
+      const result = await placeOrder(state.clobWallet, state.clobCreds, {
+        tokenId: params.tokenId,
+        price: params.price,
+        size: params.size,
+        side,
+      });
+      return { success: true, command: cmd, parsed: result };
+    }
+
+    case 'cancelOrder': {
+      if (!state.clobWallet) throw new Error('Wallet not connected — use the 🔑 Account panel');
+      if (!state.clobCreds) throw new Error('API credentials not derived — click Connect Account');
+      const result = await clobDelete(state.clobWallet, state.clobCreds, '/order', {
+        orderID: params.orderId,
+      });
+      return { success: true, command: cmd, parsed: result };
+    }
+
+    default:
+      throw new Error(`Unknown CLOB preset: ${presetId}`);
   }
 }
 
@@ -1114,11 +1347,16 @@ commandForm.addEventListener('submit', async (event) => {
   cliOutput.textContent = 'Running action…';
   cliOutputRaw.textContent = '';
   try {
-    const result = await getJson('/api/cli/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presetId: state.selectedPreset.id, params })
-    });
+    let result;
+    if (state.serverAvailable) {
+      result = await getJson('/api/cli/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presetId: state.selectedPreset.id, params })
+      });
+    } else {
+      result = await runClobPreset(state.selectedPreset.id, params);
+    }
 
     lastCommand.textContent = result.command.join(' ');
 
@@ -1178,11 +1416,16 @@ quickTradeForm.addEventListener('submit', async (event) => {
   setButtonBusy(quickTradeSubmitButton, true, 'Submit Trade', 'Submitting…');
   quickTradeOutput.textContent = 'Submitting trade…';
   try {
-    const result = await getJson('/api/cli/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presetId, params })
-    });
+    let result;
+    if (state.serverAvailable) {
+      result = await getJson('/api/cli/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presetId, params })
+      });
+    } else {
+      result = await runClobPreset(presetId, params);
+    }
 
     if (!result.success) {
       quickTradeOutput.textContent = formatActionFailure(result);
@@ -1221,18 +1464,42 @@ researchForm.addEventListener('submit', async (event) => {
   researchContext.textContent = '';
 
   try {
-    const result = await getJson('/api/research', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        marketId,
-        tokenId,
-        question,
-        timeHorizon,
-        riskTolerance,
-        aiConfig: getAiConfigFromForm()
-      })
-    });
+    let result;
+    if (state.serverAvailable) {
+      result = await getJson('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marketId,
+          tokenId,
+          question,
+          timeHorizon,
+          riskTolerance,
+          aiConfig: getAiConfigFromForm()
+        })
+      });
+    } else {
+      // Direct-API mode: fetch market + orderbook, build prompt, call AI
+      const [marketData, orderbookData] = await Promise.allSettled([
+        clobGet(`/markets/${marketId}`).catch(() => null),
+        tokenId ? clobGet(`/book?token_id=${tokenId}`).catch(() => null) : Promise.resolve(null),
+      ]);
+
+      const context = {
+        market: marketData.status === 'fulfilled' ? marketData.value : null,
+        orderbook: orderbookData.status === 'fulfilled' ? orderbookData.value : null,
+      };
+
+      researchContext.textContent = JSON.stringify(context, null, 2);
+
+      const messages = buildResearchMessages({ question, marketId, timeHorizon, riskTolerance, context });
+      const aiConfig = getAiConfigFromForm();
+      if (!aiConfig.baseUrl) {
+        throw new Error('AI Base URL not set. Configure it in the Custom AI Model section.');
+      }
+      const { model: usedModel, content } = await callAiDirect(aiConfig, messages);
+      result = { analysis: content, model: usedModel, context };
+    }
 
     researchOutput.innerHTML = renderMarkdown(result.analysis);
     researchOutput.className = 'analysis md-output';
@@ -1314,11 +1581,16 @@ async function handleQuickCancel() {
   state.isCancellingOrder = true;
   setButtonBusy(quickCancelButton, true, 'Cancel', 'Cancelling…');
   try {
-    const result = await getJson('/api/cli/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ presetId: 'cancelOrder', params: { orderId } })
-    });
+    let result;
+    if (state.serverAvailable) {
+      result = await getJson('/api/cli/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presetId: 'cancelOrder', params: { orderId } })
+      });
+    } else {
+      result = await runClobPreset('cancelOrder', { orderId });
+    }
     if (!result.success) {
       showToast(`Cancel failed: ${humanizeErrorText(result.stderr || result.stdout)}`, 'bad');
       return;
@@ -1349,9 +1621,128 @@ if (quickCancelIdInput) {
   });
 }
 
+// ─── Credentials / account panel ─────────────────────────────────────────────
+function updateCredsUI() {
+  if (!credsStatusBadge) return;
+  if (state.clobWallet && state.clobCreds) {
+    credsStatusBadge.textContent = 'Connected';
+    credsStatusBadge.className = 'creds-status-badge connected';
+  } else if (state.clobWallet) {
+    credsStatusBadge.textContent = 'Wallet loaded';
+    credsStatusBadge.className = 'creds-status-badge connecting';
+  } else {
+    credsStatusBadge.textContent = 'Not Connected';
+    credsStatusBadge.className = 'creds-status-badge';
+  }
+}
+
+async function connectAccount() {
+  const rawKey = credsPrivateKey?.value?.trim();
+  if (!rawKey) {
+    showToast('Enter your private key first', 'bad');
+    return;
+  }
+
+  if (credsConnectBtn) {
+    credsConnectBtn.disabled = true;
+    credsConnectBtn.textContent = 'Connecting…';
+  }
+  if (credsStatusBadge) {
+    credsStatusBadge.textContent = 'Connecting…';
+    credsStatusBadge.className = 'creds-status-badge connecting';
+  }
+
+  try {
+    const { Wallet } = await getEthers();
+    const key = rawKey.startsWith('0x') ? rawKey : `0x${rawKey}`;
+    const wallet = new Wallet(key);
+    const address = await wallet.getAddress();
+
+    // Derive Polymarket API credentials (deterministic)
+    const creds = await deriveApiCreds(wallet);
+
+    state.clobWallet = wallet;
+    state.clobCreds = creds;
+
+    // Show address, hide key input for security
+    if (credsAddressLine) {
+      credsAddressLine.textContent = `Connected: ${address}`;
+      credsAddressLine.hidden = false;
+    }
+    if (credsPrivateKey) {
+      credsPrivateKey.value = '';
+    }
+    if (credsDisconnectBtn) {
+      credsDisconnectBtn.hidden = false;
+    }
+
+    updateCredsUI();
+    showToast(`Account connected: ${address.slice(0, 10)}…`, 'ok');
+
+    // Refresh live feed and status now that we have credentials
+    loadStatus().catch(() => {});
+    refreshLiveOverview().catch(() => {});
+  } catch (error) {
+    showToast(`Connect failed: ${error.message}`, 'bad');
+    updateCredsUI();
+  } finally {
+    if (credsConnectBtn) {
+      credsConnectBtn.disabled = false;
+      credsConnectBtn.textContent = 'Connect Account';
+    }
+  }
+}
+
+function disconnectAccount() {
+  state.clobWallet = null;
+  state.clobCreds = null;
+  if (credsAddressLine) {
+    credsAddressLine.hidden = true;
+    credsAddressLine.textContent = '';
+  }
+  if (credsDisconnectBtn) {
+    credsDisconnectBtn.hidden = true;
+  }
+  updateCredsUI();
+  showToast('Account disconnected', 'ok');
+}
+
+if (credsConnectBtn) {
+  credsConnectBtn.addEventListener('click', () => {
+    connectAccount().catch(() => {});
+  });
+}
+if (credsDisconnectBtn) {
+  credsDisconnectBtn.addEventListener('click', disconnectAccount);
+}
+if (credsPrivateKey) {
+  credsPrivateKey.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      connectAccount().catch(() => {});
+    }
+  });
+}
+
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
+async function detectServer() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('/api/status', { signal: controller.signal });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
   loadFromStorage();
+
+  // Detect whether the local Express server is reachable
+  state.serverAvailable = await detectServer();
+
   await Promise.all([loadStatus(), loadPresets()]);
   renderResearchHistory();
   // Load trending markets on startup so the search panel has content immediately
@@ -1359,14 +1750,18 @@ async function bootstrap() {
 
   const isFirstVisit = !storageLoad(STORAGE_KEYS.firstVisitDone);
   if (isFirstVisit) {
-    // Show a welcome hint in the setup panel and run the wizard automatically
     storageSave(STORAGE_KEYS.firstVisitDone, '1');
     const firstVisitBanner = document.querySelector('#first-visit-banner');
     if (firstVisitBanner) {
       firstVisitBanner.hidden = false;
     }
-    await runSetupWizard();
-    document.querySelector('#setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Only run the full setup wizard in server mode; in direct mode scroll to credentials
+    if (state.serverAvailable) {
+      await runSetupWizard();
+      document.querySelector('#setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      document.querySelector('#credentials')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   await refreshLiveOverview();

@@ -563,3 +563,48 @@ details summary:hover { color: var(--text); }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-dark); }
+
+/* ── Credentials / Account panel ─────────────────────────────────── */
+.creds-panel .panel-head { align-items: center; }
+
+.creds-status-badge {
+  font-family: var(--mono);
+  font-size: .72rem;
+  padding: .25rem .65rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface-hi);
+  white-space: nowrap;
+}
+.creds-status-badge.connected {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(39,174,96,.12);
+}
+.creds-status-badge.connecting {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: rgba(245,166,35,.1);
+}
+
+.creds-actions {
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-top: .5rem;
+}
+
+.creds-address {
+  font-family: var(--mono);
+  font-size: .8rem;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+/* ── Mode indicator in status hero ───────────────────────────────── */
+.status-tile .mode-badge {
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--accent);
+}
