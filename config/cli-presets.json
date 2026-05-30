@@ -96,5 +96,21 @@
     "category": "Execution",
     "argsTemplate": ["clob", "cancel", "{{orderId}}", "-o", "json"],
     "requiredParams": ["orderId"]
+  },
+  {
+    "id": "walletBalance",
+    "label": "Wallet Balance",
+    "description": "Show USDC balance for the configured wallet.",
+    "category": "Portfolio",
+    "argsTemplate": ["wallet", "balance", "-o", "json"],
+    "requiredParams": []
+  },
+  {
+    "id": "tradeHistory",
+    "label": "Trade History",
+    "description": "Show recent trade history for a wallet address.",
+    "category": "Portfolio",
+    "argsTemplate": ["data", "trades", "{{walletAddress}}", "-o", "json"],
+    "requiredParams": ["walletAddress"]
   }
 ]

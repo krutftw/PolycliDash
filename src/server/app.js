@@ -414,6 +414,9 @@ export function createApp() {
     res.json(overview);
   });
 
+  const VALID_TIME_HORIZONS = new Set(['intraday', 'swing', 'event']);
+  const VALID_RISK_TOLERANCES = new Set(['conservative', 'moderate', 'aggressive']);
+
   // POST /api/research
   app.post('/api/research', async (req, res) => {
     const {
@@ -433,6 +436,18 @@ export function createApp() {
       res
         .status(400)
         .json({ error: 'question is required and must be at least 8 characters.' });
+      return;
+    }
+
+    if (!VALID_TIME_HORIZONS.has(timeHorizon)) {
+      res.status(400).json({ error: 'timeHorizon must be one of: intraday, swing, event.' });
+      return;
+    }
+
+    if (!VALID_RISK_TOLERANCES.has(riskTolerance)) {
+      res
+        .status(400)
+        .json({ error: 'riskTolerance must be one of: conservative, moderate, aggressive.' });
       return;
     }
 

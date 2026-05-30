@@ -451,8 +451,160 @@ details summary:hover { color: var(--text); }
 .warn { color: var(--warn); }
 .fail, .error { color: var(--danger); }
 
-/* ── Scrollbars ───────────────────────────────────────────────────── */
+/* ── Live subsection head ─────────────────────────────────────────── */
+.live-subsection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: .4rem;
+}
+.live-subsection-head h3 {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.quick-cancel-row {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.quick-cancel-input {
+  width: 130px !important;
+  font-size: .78rem !important;
+  padding: .3rem .6rem !important;
+}
+.danger-btn {
+  color: var(--danger);
+  border-color: rgba(231, 76, 60, .35);
+}
+.danger-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(231, 76, 60, .08);
+}
+
+/* ── Research history ─────────────────────────────────────────────── */
+.research-history {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+.history-item {
+  background: var(--surface-hi);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.history-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.history-market {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+.history-meta {
+  font-size: .72rem;
+  color: var(--text-muted);
+}
+.history-question {
+  font-size: .85rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+.history-restore-btn {
+  align-self: flex-start;
+  font-size: .78rem;
+  padding: .25rem .65rem;
+}
+
+/* ── First-visit banner ───────────────────────────────────────────── */
+.first-visit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  background: rgba(0, 210, 255, .08);
+  border: 1px solid rgba(0, 210, 255, .3);
+  border-radius: 8px;
+  padding: .65rem 1rem;
+  font-size: .875rem;
+  color: var(--text-strong);
+  margin-bottom: .75rem;
+}
+.first-visit-banner span { flex: 1; }
+.banner-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: .85rem;
+  padding: .2rem .4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.banner-dismiss:hover { color: var(--text-strong); }
+
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-dark); }
+
+/* ── Credentials / Account panel ─────────────────────────────────── */
+.creds-panel .panel-head { align-items: center; }
+
+.creds-status-badge {
+  font-family: var(--mono);
+  font-size: .72rem;
+  padding: .25rem .65rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface-hi);
+  white-space: nowrap;
+}
+.creds-status-badge.connected {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(39,174,96,.12);
+}
+.creds-status-badge.connecting {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: rgba(245,166,35,.1);
+}
+
+.creds-actions {
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-top: .5rem;
+}
+
+.creds-address {
+  font-family: var(--mono);
+  font-size: .8rem;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+/* ── Mode indicator in status hero ───────────────────────────────── */
+.status-tile .mode-badge {
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--accent);
+}

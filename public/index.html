@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="rain-layer" aria-hidden="true"></div>
@@ -49,6 +49,7 @@
 
       <!-- ── Quick nav ──────────────────────────────────────────────── -->
       <nav class="quick-nav card" aria-label="Jump to section">
+        <a class="quick-link" href="#credentials">🔑 Account</a>
         <a class="quick-link" href="#search">🔍 Market Search</a>
         <a class="quick-link" href="#setup">⚙ Setup</a>
         <a class="quick-link" href="#live">📡 Live Feed</a>
@@ -56,6 +57,45 @@
         <a class="quick-link" href="#actions">🛠 Actions</a>
         <a class="quick-link" href="#research">🤖 AI Research</a>
       </nav>
+
+      <!-- ── Polymarket Account ─────────────────────────────────── -->
+      <section id="credentials" class="card panel creds-panel">
+        <div class="panel-head">
+          <h2>🔑 Polymarket Account</h2>
+          <span id="creds-status" class="creds-status-badge">Not Connected</span>
+        </div>
+        <p class="panel-note">
+          Connect with your Polymarket private key to place orders, view positions,
+          and use the live feed. Your key is held in browser memory only — never
+          stored to disk or sent anywhere except Polymarket's API.
+          Leave this blank to use the dashboard in read-only mode.
+        </p>
+        <div class="param-grid">
+          <label class="field">
+            <span>Private Key</span>
+            <input
+              id="creds-private-key"
+              type="password"
+              placeholder="0x…64 hex characters"
+              autocomplete="off"
+            />
+          </label>
+          <label class="field">
+            <span>Funder / Proxy Address <small>(optional)</small></span>
+            <input
+              id="creds-funder"
+              type="text"
+              placeholder="Leave blank — uses wallet address by default"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+        <div class="creds-actions">
+          <button id="creds-connect-btn" class="primary-btn" type="button">Connect Account</button>
+          <button id="creds-disconnect-btn" class="ghost-btn" type="button" hidden>Disconnect</button>
+        </div>
+        <p id="creds-address-line" class="panel-note creds-address" hidden></p>
+      </section>
 
       <!-- ── Market Search (Gamma API) ──────────────────────────────── -->
       <section id="search" class="card panel search-panel">
@@ -95,6 +135,10 @@
           New users: run this first to confirm CLI access, account auth, order
           execution presets, and AI connection.
         </p>
+        <div id="first-visit-banner" class="first-visit-banner" hidden>
+          <span>👋 Welcome! We've run a setup check for you below. Once everything is green you're good to go.</span>
+          <button type="button" class="banner-dismiss" aria-label="Dismiss">✕</button>
+        </div>
         <div class="param-grid">
           <label class="field">
             <span>Optional Market ID Check</span>
@@ -174,7 +218,19 @@
             <pre id="live-positions-output" class="console"></pre>
           </div>
           <div>
-            <h3>Open Orders (live)</h3>
+            <div class="live-subsection-head">
+              <h3>Open Orders (live)</h3>
+              <span class="quick-cancel-row">
+                <input
+                  id="quick-cancel-id"
+                  type="text"
+                  placeholder="Order ID…"
+                  autocomplete="off"
+                  class="quick-cancel-input"
+                />
+                <button id="quick-cancel-btn" type="button" class="ghost-btn danger-btn">Cancel</button>
+              </span>
+            </div>
             <pre id="live-orders-output" class="console"></pre>
           </div>
           <div>
@@ -399,11 +455,15 @@
             <summary>Market Context Sent to AI</summary>
             <pre id="research-context" class="console"></pre>
           </details>
+          <details id="research-history-section">
+            <summary>Research History (last 5)</summary>
+            <div id="research-history-list" class="research-history top-gap"></div>
+          </details>
         </article>
 
       </section>
     </main>
 
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
