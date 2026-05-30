@@ -1,6 +1,8 @@
 import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { appConfig, loadPresets } from './config.js';
 import { probeCli, runPreset } from './cliRunner.js';
 import { buildResearchMessages } from './researchPrompt.js';
@@ -12,6 +14,7 @@ import {
   chatWithOpenAiCompatible,
   probeOpenAiCompatible
 } from './openAiCompatibleClient.js';
+import { searchGammaMarkets } from './gammaClient.js';
 
 export function createApp() {
   const app = express();
@@ -24,8 +27,45 @@ export function createApp() {
     apiKey: ''
   };
 
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+          fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+          connectSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:'],
+          objectSrc: ["'none'"],
+          frameSrc: ["'none'"]
+        }
+      }
+    })
+  );
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
+
+  // General API rate limit: 120 req/min
+  const apiLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests — please slow down.' }
+  });
+  app.use('/api', apiLimiter);
+
+  // Heavier endpoints (AI + setup): 20 req/min
+  const heavyLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many heavy requests — please wait a moment.' }
+  });
+  app.use('/api/research', heavyLimiter);
+  app.use('/api/setup/wizard', heavyLimiter);
 
   const publicDir = path.join(appConfig.projectRoot, 'public');
   app.use(express.static(publicDir));
@@ -204,6 +244,7 @@ export function createApp() {
     });
   }
 
+  // GET /api/status — CLI + AI health + client config hints
   app.get('/api/status', async (_req, res) => {
     const [cliStatus, aiStatus] = await Promise.all([
       probeCli(appConfig.cliBinary, appConfig.commandTimeoutMs),
@@ -216,10 +257,14 @@ export function createApp() {
         available: cliStatus.available,
         detail: cliStatus.stderr || null
       },
-      ai: aiStatus
+      ai: aiStatus,
+      config: {
+        liveRefreshIntervalMs: appConfig.liveRefreshIntervalMs
+      }
     });
   });
 
+  // GET /api/cli/presets
   app.get('/api/cli/presets', (_req, res) => {
     res.json({
       cliBinary: appConfig.cliBinary,
@@ -227,13 +272,12 @@ export function createApp() {
     });
   });
 
+  // POST /api/cli/run
   app.post('/api/cli/run', async (req, res) => {
     const { presetId, params } = req.body ?? {};
 
     if (!presetId) {
-      res.status(400).json({
-        error: 'presetId is required.'
-      });
+      res.status(400).json({ error: 'presetId is required.' });
       return;
     }
 
@@ -241,12 +285,11 @@ export function createApp() {
       const execution = await executePresetById(presetId, params || {});
       res.json(execution);
     } catch (error) {
-      res.status(400).json({
-        error: error.message
-      });
+      res.status(400).json({ error: error.message });
     }
   });
 
+  // POST /api/setup/wizard
   app.post('/api/setup/wizard', async (req, res) => {
     const marketId = String(req.body?.marketId || '').trim();
     const tokenId = String(req.body?.tokenId || '').trim();
@@ -333,18 +376,18 @@ export function createApp() {
     });
   });
 
+  // POST /api/ai/test
   app.post('/api/ai/test', async (req, res) => {
     try {
       const aiConfig = resolveAiConfig(req.body?.aiConfig, defaultAiConfig);
       const status = await getAiStatus(aiConfig);
       res.json(status);
     } catch (error) {
-      res.status(400).json({
-        error: error.message
-      });
+      res.status(400).json({ error: error.message });
     }
   });
 
+  // GET /api/live/overview
   app.get('/api/live/overview', async (req, res) => {
     const marketId = String(req.query.marketId || '').trim();
     const tokenId = String(req.query.tokenId || '').trim();
@@ -371,6 +414,7 @@ export function createApp() {
     res.json(overview);
   });
 
+  // POST /api/research
   app.post('/api/research', async (req, res) => {
     const {
       marketId,
@@ -443,10 +487,21 @@ export function createApp() {
         context
       });
     } catch (error) {
-      res.status(500).json({
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
     }
+  });
+
+  // GET /api/gamma/markets — Polymarket Gamma API market discovery (no CLI needed)
+  app.get('/api/gamma/markets', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    const limit = Number(req.query.limit) || 20;
+    const active = req.query.active !== 'false';
+    const closed = req.query.closed === 'true';
+    const order = String(req.query.order || 'volume24hr');
+    const ascending = req.query.ascending === 'true';
+
+    const result = await searchGammaMarkets({ q, limit, active, closed, order, ascending });
+    res.json(result);
   });
 
   app.use('/api', (_req, res) => {
