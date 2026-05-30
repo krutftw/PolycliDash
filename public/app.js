@@ -81,7 +81,8 @@ const STORAGE_KEYS = {
   aiProvider: 'polyclidash.aiProvider',
   aiBaseUrl: 'polyclidash.aiBaseUrl',
   aiModel: 'polyclidash.aiModel',
-  researchHistory: 'polyclidash.researchHistory'
+  researchHistory: 'polyclidash.researchHistory',
+  firstVisitDone: 'polyclidash.firstVisitDone'
 };
 
 function storageSave(key, value) {
@@ -554,13 +555,20 @@ function fillMarketId(id) {
   refreshLiveOverview().catch(() => {});
 }
 
-function fillTokenId(id) {
+function fillTokenId(id, price) {
   liveTokenIdInput.value = id;
   document.querySelector('#research-token-id').value = id;
   setupTokenIdInput.value = id;
   quickTradeToken.value = id;
+  if (price != null) {
+    const priceNum = Number(price);
+    if (Number.isFinite(priceNum) && priceNum > 0 && priceNum < 1) {
+      quickTradePrice.value = priceNum.toFixed(3);
+    }
+  }
   storageSave(STORAGE_KEYS.tokenId, id);
-  showToast(`Token ID filled: ${id}`, 'ok');
+  const priceHint = price != null ? ` (price: ${Number(price).toFixed(3)})` : '';
+  showToast(`Token ID filled: ${id}${priceHint}`, 'ok');
   refreshLiveOverview().catch(() => {});
 }
 
@@ -706,7 +714,7 @@ function renderSetup(data) {
   setupChecks.innerHTML = '';
   data.checks.forEach((check) => {
     const item = document.createElement('article');
-    item.className = `wizard-check status-${check.status}`;
+    item.className = `wizard-check ${check.status}`;
     const icon = check.status === 'pass' ? '✓' : check.status === 'fail' ? '✗' : '–';
     item.innerHTML = `
       <header>
@@ -952,7 +960,7 @@ function renderGammaResults(result) {
         useTokenBtn.type = 'button';
         useTokenBtn.className = 'ghost-btn gamma-use-btn';
         useTokenBtn.textContent = `→ Use ${escapeHtml(token.outcome || 'Token')} ID`;
-        useTokenBtn.addEventListener('click', () => fillTokenId(token.tokenId));
+        useTokenBtn.addEventListener('click', () => fillTokenId(token.tokenId, token.price));
         actionsDiv.appendChild(useTokenBtn);
       });
     }
@@ -1025,6 +1033,7 @@ function populatePresetSelect() {
     const option = document.createElement('option');
     option.value = preset.id;
     option.textContent = `${preset.label} · ${preset.category}`;
+    option.title = preset.description || '';
     presetSelect.append(option);
   });
 
@@ -1347,7 +1356,19 @@ async function bootstrap() {
   renderResearchHistory();
   // Load trending markets on startup so the search panel has content immediately
   runGammaSearch().catch(() => {});
-  await runSetupWizard();
+
+  const isFirstVisit = !storageLoad(STORAGE_KEYS.firstVisitDone);
+  if (isFirstVisit) {
+    // Show a welcome hint in the setup panel and run the wizard automatically
+    storageSave(STORAGE_KEYS.firstVisitDone, '1');
+    const firstVisitBanner = document.querySelector('#first-visit-banner');
+    if (firstVisitBanner) {
+      firstVisitBanner.hidden = false;
+    }
+    await runSetupWizard();
+    document.querySelector('#setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   await refreshLiveOverview();
   startLiveLoop();
 }
@@ -1356,3 +1377,12 @@ bootstrap().catch((error) => {
   cliOutput.textContent = `Startup error: ${error.message}`;
   cliOutputRaw.textContent = '';
 });
+
+// ─── First-visit banner dismiss ───────────────────────────────────────────────
+const firstVisitBanner = document.querySelector('#first-visit-banner');
+const bannerDismissBtn = firstVisitBanner?.querySelector('.banner-dismiss');
+if (bannerDismissBtn) {
+  bannerDismissBtn.addEventListener('click', () => {
+    firstVisitBanner.hidden = true;
+  });
+}
