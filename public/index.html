@@ -174,7 +174,19 @@
             <pre id="live-positions-output" class="console"></pre>
           </div>
           <div>
-            <h3>Open Orders (live)</h3>
+            <div class="live-subsection-head">
+              <h3>Open Orders (live)</h3>
+              <span class="quick-cancel-row">
+                <input
+                  id="quick-cancel-id"
+                  type="text"
+                  placeholder="Order ID…"
+                  autocomplete="off"
+                  class="quick-cancel-input"
+                />
+                <button id="quick-cancel-btn" type="button" class="ghost-btn danger-btn">Cancel</button>
+              </span>
+            </div>
             <pre id="live-orders-output" class="console"></pre>
           </div>
           <div>
@@ -398,6 +410,10 @@
           <details>
             <summary>Market Context Sent to AI</summary>
             <pre id="research-context" class="console"></pre>
+          </details>
+          <details id="research-history-section">
+            <summary>Research History (last 5)</summary>
+            <div id="research-history-list" class="research-history top-gap"></div>
           </details>
         </article>
 

@@ -40,6 +40,9 @@ const quickTradePrice = document.querySelector('#quick-trade-price');
 const quickTradeSize = document.querySelector('#quick-trade-size');
 const quickTradeOutput = document.querySelector('#quick-trade-output');
 
+const quickCancelIdInput = document.querySelector('#quick-cancel-id');
+const quickCancelButton = document.querySelector('#quick-cancel-btn');
+
 const researchForm = document.querySelector('#research-form');
 const runResearchButton = document.querySelector('#run-research');
 const researchOutput = document.querySelector('#research-output');
@@ -67,8 +70,51 @@ const state = {
   isSubmittingTrade: false,
   isRunningResearch: false,
   isTestingAi: false,
-  isSearchingGamma: false
+  isSearchingGamma: false,
+  isCancellingOrder: false
 };
+
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+const STORAGE_KEYS = {
+  marketId: 'polyclidash.marketId',
+  tokenId: 'polyclidash.tokenId',
+  aiProvider: 'polyclidash.aiProvider',
+  aiBaseUrl: 'polyclidash.aiBaseUrl',
+  aiModel: 'polyclidash.aiModel',
+  researchHistory: 'polyclidash.researchHistory'
+};
+
+function storageSave(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    /* storage full or blocked */
+  }
+}
+
+function storageLoad(key) {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function storageLoadJson(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function storageSaveJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full or blocked */
+  }
+}
 
 const PARAM_META = {
   marketId: { label: 'Market ID', placeholder: 'Paste market ID or slug' },
@@ -503,6 +549,7 @@ function fillMarketId(id) {
   liveMarketIdInput.value = id;
   document.querySelector('#research-market-id').value = id;
   setupMarketIdInput.value = id;
+  storageSave(STORAGE_KEYS.marketId, id);
   showToast(`Market ID filled: ${shortText(id, 40)}`, 'ok');
   refreshLiveOverview().catch(() => {});
 }
@@ -512,8 +559,97 @@ function fillTokenId(id) {
   document.querySelector('#research-token-id').value = id;
   setupTokenIdInput.value = id;
   quickTradeToken.value = id;
+  storageSave(STORAGE_KEYS.tokenId, id);
   showToast(`Token ID filled: ${id}`, 'ok');
   refreshLiveOverview().catch(() => {});
+}
+
+// ─── Persist AI config changes to localStorage ────────────────────────────────
+aiProvider.addEventListener('change', () => {
+  storageSave(STORAGE_KEYS.aiProvider, aiProvider.value);
+});
+aiBaseUrl.addEventListener('change', () => {
+  storageSave(STORAGE_KEYS.aiBaseUrl, aiBaseUrl.value.trim());
+});
+aiModel.addEventListener('change', () => {
+  storageSave(STORAGE_KEYS.aiModel, aiModel.value.trim());
+});
+
+// ─── Load persisted IDs and AI config from localStorage ──────────────────────
+function loadFromStorage() {
+  const marketId = storageLoad(STORAGE_KEYS.marketId);
+  const tokenId = storageLoad(STORAGE_KEYS.tokenId);
+  if (marketId) {
+    liveMarketIdInput.value = marketId;
+    document.querySelector('#research-market-id').value = marketId;
+    setupMarketIdInput.value = marketId;
+  }
+  if (tokenId) {
+    liveTokenIdInput.value = tokenId;
+    document.querySelector('#research-token-id').value = tokenId;
+    setupTokenIdInput.value = tokenId;
+    quickTradeToken.value = tokenId;
+  }
+  const savedProvider = storageLoad(STORAGE_KEYS.aiProvider);
+  const savedBaseUrl = storageLoad(STORAGE_KEYS.aiBaseUrl);
+  const savedModel = storageLoad(STORAGE_KEYS.aiModel);
+  if (savedProvider) {
+    aiProvider.value = savedProvider;
+  }
+  if (savedBaseUrl) {
+    aiBaseUrl.value = savedBaseUrl;
+  }
+  if (savedModel) {
+    aiModel.value = savedModel;
+  }
+}
+
+// ─── Research history ─────────────────────────────────────────────────────────
+const RESEARCH_HISTORY_MAX = 5;
+
+function loadResearchHistory() {
+  return storageLoadJson(STORAGE_KEYS.researchHistory);
+}
+
+function addToResearchHistory(entry) {
+  const history = loadResearchHistory();
+  history.unshift(entry);
+  storageSaveJson(STORAGE_KEYS.researchHistory, history.slice(0, RESEARCH_HISTORY_MAX));
+  renderResearchHistory();
+}
+
+function renderResearchHistory() {
+  const historyEl = document.querySelector('#research-history-list');
+  if (!historyEl) {
+    return;
+  }
+  const history = loadResearchHistory();
+  if (history.length === 0) {
+    historyEl.innerHTML = '<p class="panel-note">No research history yet.</p>';
+    return;
+  }
+  historyEl.innerHTML = '';
+  history.forEach((entry, index) => {
+    const item = document.createElement('article');
+    item.className = 'history-item';
+    const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '';
+    item.innerHTML = `
+      <div class="history-item-head">
+        <span class="history-market">${escapeHtml(shortText(entry.marketId || '', 36))}</span>
+        <span class="history-meta">${escapeHtml(entry.model || '')}${ts ? ` · ${escapeHtml(ts)}` : ''}</span>
+      </div>
+      <p class="history-question">${escapeHtml(shortText(entry.question || '', 100))}</p>
+      <button type="button" class="ghost-btn history-restore-btn" data-index="${index}">↩ Restore</button>
+    `;
+    item.querySelector('.history-restore-btn').addEventListener('click', () => {
+      document.querySelector('#research-market-id').value = entry.marketId || '';
+      document.querySelector('#research-question').value = entry.question || '';
+      researchOutput.innerHTML = renderMarkdown(entry.analysis || '');
+      researchOutput.className = 'analysis md-output';
+      showToast('Research result restored', 'ok');
+    });
+    historyEl.appendChild(item);
+  });
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────
@@ -1092,6 +1228,13 @@ researchForm.addEventListener('submit', async (event) => {
     researchOutput.innerHTML = renderMarkdown(result.analysis);
     researchOutput.className = 'analysis md-output';
     researchContext.textContent = toPretty(result.context);
+    addToResearchHistory({
+      marketId,
+      question,
+      analysis: result.analysis,
+      model: result.model,
+      timestamp: new Date().toISOString()
+    });
     showToast('Research complete', 'ok');
   } catch (error) {
     researchOutput.textContent = `Research failed: ${error.message}`;
@@ -1149,9 +1292,59 @@ gammaSearchInput.addEventListener('keydown', (e) => {
   }
 });
 
+// ─── Quick Cancel (from live orders panel) ────────────────────────────────────
+async function handleQuickCancel() {
+  const orderId = quickCancelIdInput.value.trim();
+  if (!orderId) {
+    showToast('Enter an Order ID to cancel', 'warn');
+    return;
+  }
+  if (!confirm(`Cancel order ${orderId}?\n\nThis will submit a cancel request.`)) {
+    return;
+  }
+  state.isCancellingOrder = true;
+  setButtonBusy(quickCancelButton, true, 'Cancel', 'Cancelling…');
+  try {
+    const result = await getJson('/api/cli/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presetId: 'cancelOrder', params: { orderId } })
+    });
+    if (!result.success) {
+      showToast(`Cancel failed: ${humanizeErrorText(result.stderr || result.stdout)}`, 'bad');
+      return;
+    }
+    quickCancelIdInput.value = '';
+    showToast(`Cancel request sent for order ${shortText(orderId, 24)}`, 'ok');
+    refreshLiveOverview().catch(() => {});
+  } catch (error) {
+    showToast(`Cancel failed: ${error.message}`, 'bad');
+  } finally {
+    state.isCancellingOrder = false;
+    setButtonBusy(quickCancelButton, false, 'Cancel', 'Cancelling…');
+  }
+}
+
+if (quickCancelButton) {
+  quickCancelButton.addEventListener('click', () => {
+    handleQuickCancel().catch(() => {});
+  });
+}
+
+if (quickCancelIdInput) {
+  quickCancelIdInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleQuickCancel().catch(() => {});
+    }
+  });
+}
+
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 async function bootstrap() {
+  loadFromStorage();
   await Promise.all([loadStatus(), loadPresets()]);
+  renderResearchHistory();
   // Load trending markets on startup so the search panel has content immediately
   runGammaSearch().catch(() => {});
   await runSetupWizard();

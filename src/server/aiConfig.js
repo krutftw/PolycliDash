@@ -9,8 +9,16 @@ function normalizeProvider(rawProvider) {
 }
 
 function normalizeBaseUrl(url, fallback) {
-  const value = String(url || fallback || '').trim();
-  return value.replace(/\/+$/, '');
+  // Use string ops rather than a regex to avoid any ReDoS risk with trailing slashes
+  let value = String(url || fallback || '').trim();
+  while (value.endsWith('/')) {
+    value = value.slice(0, -1);
+  }
+  const lower = value.toLowerCase();
+  if (value && !lower.startsWith('http://') && !lower.startsWith('https://')) {
+    throw new Error('AI base URL must start with http:// or https://.');
+  }
+  return value;
 }
 
 function normalizeModel(model, fallback) {
