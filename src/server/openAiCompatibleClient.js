@@ -6,7 +6,16 @@ async function fetchJson(url, options = {}) {
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     const text = await response.text();
-    const payload = text ? JSON.parse(text) : {};
+    let payload = {};
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Provider returned non-JSON response (${response.status}): ${text.slice(0, 200)}`
+        );
+      }
+    }
 
     if (!response.ok) {
       throw new Error(

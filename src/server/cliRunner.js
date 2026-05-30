@@ -62,7 +62,12 @@ function runProcess(binary, args, timeoutMs) {
     const child = spawn(binary, args, {
       shell: false,
       windowsHide: true,
-      env: process.env
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        LANG: process.env.LANG,
+        TERM: process.env.TERM
+      }
     });
 
     let stdout = '';
